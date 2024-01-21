@@ -29,34 +29,47 @@
 (defvar moonbit-ts-font-lock-rules
   '(
     :language moonbit
-    :override t
     :feature comment
-    ((comment) @font-lock-comment-face)))
+    ((comment) @font-lock-comment-face)
 
-(defun moonbit-ts-setup ()
-  "Setup treesit for moonbit-ts-mode."
+    :language moonbit
+    :feature bracket
+    ((["(" ")" "[" "]" "{" "}"]) @font-lock-bracket-face)
 
-  (setq-local treesit-font-lock-settings
-              (apply #'treesit-font-lock-rules moonbit-ts-font-lock-rules))
-  (setq-local treesit-font-lock-feature-list
-              '((comment definition)
-                (keyword string)
-                (assignment attribute builtin constant escape-sequence
-                 number type)
-                (bracket delimiter error function operator property variable)))
-  
-  (treesit-major-mode-setup))
+    :language moonbit
+    :feature keyword
+    ((["let" "mut" "struct" "enum" "type" "pub" "priv" "readonly"]) @font-lock-keyword-face)
 
-;;;###autoload
+    :language moonbit
+    :feature number
+    ([(float_literal) (integer_literal)] @font-lock-number-face)))
+
 (define-derived-mode moonbit-ts-mode prog-mode "MoonBit"
   "Major mode for MoonBit code."
   :group 'moonbit-mode
+  :syntax-table prog-mode-syntax-table
 
   ;; Comments.
   ;; (c-ts-common-comment-setup)
 
   (when (treesit-ready-p 'moonbit)
     (treesit-parser-create 'moonbit)
-    (moonbit-ts-setup)))
+
+    (setq-local treesit-font-lock-settings
+                (apply #'treesit-font-lock-rules moonbit-ts-font-lock-rules))
+
+    (setq-local treesit-font-lock-feature-list
+                '((comment definition)
+                  (keyword string)
+                  (assignment attribute builtin constant escape-sequence
+                              number type)
+                  (bracket delimiter error function operator property variable)))
+
+    (treesit-major-mode-setup)))
+
+(if (treesit-ready-p 'moonbit)
+    (add-to-list 'auto-mode-alist '("\\.mbt\\'" . moonbit-ts-mode)))
+
+(provide 'moonbit-ts-mode)
 
 ;;; moonbit-mode.el ends here
