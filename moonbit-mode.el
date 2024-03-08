@@ -44,6 +44,7 @@
     :feature number
     ([(float_literal) (integer_literal)] @font-lock-number-face)))
 
+;;;###autoload
 (define-derived-mode moonbit-ts-mode prog-mode "MoonBit"
   "Major mode for MoonBit code."
   :group 'moonbit-mode
