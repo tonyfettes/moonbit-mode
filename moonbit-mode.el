@@ -30,7 +30,15 @@
   '(
     :language moonbit
     :feature comment
-    ((comment) @font-lock-comment-face)
+    ([(comment) (docstring)] @font-lock-comment-face)
+
+    :language moonbit
+    :feature function-name
+    ((function_definition (function_identifier) @font-lock-function-name-face))
+
+    :language moonbit
+    :feature error
+    ((error) @font-lock-error-face)
 
     :language moonbit
     :feature bracket
@@ -38,11 +46,75 @@
 
     :language moonbit
     :feature keyword
-    ((["let" "mut" "struct" "enum" "type" "pub" "priv" "readonly"]) @font-lock-keyword-face)
+    ((["let" "fn" "struct" "enum" "type" "trait"
+       ;; visibility
+       "pub" "priv" "readonly"
+       ;; mutability
+       "mut"
+       ;; control flow
+       "if" "else" "match"
+       "return"
+       "while" "continue" "break"]) @font-lock-keyword-face)
+
+    :language moonbit
+    :feature type
+    :override t
+    ((type_identifier) @font-lock-type-face)
+
+    :language moonbit
+    :feature type
+    :override t
+    ((qualified_type_identifier) @font-lock-type-face)
+
+    :language moonbit
+    :feature type
+    ((enum_definition (identifier) @font-lock-type-face))
+
+    :language moonbit
+    :feature type
+    ((struct_definition (identifier) @font-lock-type-face))
+
+    :language moonbit
+    :feature type
+    ((type_definition (identifier) @font-lock-type-face))
+
+    :language moonbit
+    :feature operator
+    ((["+" "-" "*" "/"
+       "="
+       ">=" "<=" "=="
+       "&&" "||"
+       "=>" "->"]) @font-lock-operator-face)
+
+    :language moonbit
+    :feature delimiter
+    (([";", ":", ",", "..", "::"]) @font-lock-delimiter-face)
+
+    :language moonbit
+    :feature string
+    ([(string_literal) (string_interpolation)] @font-lock-string-face)
 
     :language moonbit
     :feature number
-    ([(float_literal) (integer_literal)] @font-lock-number-face)))
+    ([(float_literal) (integer_literal) (boolean_literal)] @font-lock-number-face)
+
+    :language moonbit
+    :feature function-call
+    ((apply_expression (simple_expression (qualified_identifier) @font-lock-function-call-face)))
+
+    :language moonbit
+    :feature variable-use
+    ((qualified_identifier) @font-lock-variable-use-face)
+
+    :language moonbit
+    :feature variable-name
+    :override t
+    ((pattern (simple_pattern (lowercase_identifier) @font-lock-variable-name-face)))
+
+    :language moonbit
+    :feature variable-name
+    :override t
+    ((parameter (lowercase_identifier) @font-lock-variable-name-face))))
 
 ;;;###autoload
 (define-derived-mode moonbit-ts-mode prog-mode "MoonBit"
@@ -60,11 +132,11 @@
                 (apply #'treesit-font-lock-rules moonbit-ts-font-lock-rules))
 
     (setq-local treesit-font-lock-feature-list
-                '((comment definition)
+                '((comment function-name)
                   (keyword string)
-                  (assignment attribute builtin constant escape-sequence
+                  (assignment attribute builtin constant escape
                               number type)
-                  (bracket delimiter error function operator property variable)))
+                  (bracket delimiter error function-call operator property variable-use variable-name)))
 
     (treesit-major-mode-setup)))
 
