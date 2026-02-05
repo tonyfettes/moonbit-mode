@@ -1,6 +1,61 @@
-# MoonBit Mode
+# moonbit-mode
 
-> [!WARNING]
-> [moonbit-mode](https://github.com/cxa/moonbit-mode) by
-> [cxa (realazy)](https://github.com/cxa/moonbit-mode) has a much
-> nicer syntax highlight than this project. Please use that.
+MoonBit major mode for Emacs with tree-sitter highlighting and Eglot support.
+
+## Requirements
+
+- Emacs 29+ for `treesit` support
+- MoonBit toolchain
+- `moonbit-lsp` in `PATH` (for LSP)
+
+## Installation
+
+```elisp
+(add-to-list 'load-path "/path/to/moonbit-mode")
+(require 'moonbit-mode)
+```
+
+## Tree-sitter grammar
+
+Install the MoonBit grammar manually with Emacs `treesit`:
+
+```elisp
+(add-to-list 'treesit-language-source-alist
+             '(moonbit "https://github.com/moonbitlang/tree-sitter-moonbit.git" "main" "src"))
+(treesit-install-language-grammar 'moonbit)
+```
+
+Queries are vendored in `queries/moonbit/` and loaded automatically.
+
+## LSP (Eglot)
+
+If `eglot` is available, it is started automatically in MoonBit buffers using
+`moonbit-lsp`. You can customize the command via:
+
+```elisp
+(setq moonbit-lsp-server-command '("moonbit-lsp"))
+```
+
+## Project commands
+
+The mode sets project defaults:
+
+- Build: `moon build`
+- Test: `moon test`
+
+It also provides interactive commands:
+
+- `M-x moonbit-build`
+- `M-x moonbit-check`
+- `M-x moonbit-test`
+
+## Optional compile error parsing
+
+Enable MoonBit error parsing in compilation buffers:
+
+```elisp
+(setq moonbit-enable-compile-errors t)
+```
+
+This makes errors in `moon build`, `moon check`, and `moon test` clickable in
+`compilation-mode`.
