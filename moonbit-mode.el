@@ -1,6 +1,7 @@
 ;;; moonbit-mode.el --- MoonBit major mode with tree-sitter -*- lexical-binding: t; -*-
 
 ;; Author: MoonBit Contributors
+;; URL: https://github.com/tonyfettes/moonbit-mode
 ;; Keywords: languages, tree-sitter
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1"))

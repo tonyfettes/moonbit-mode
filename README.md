@@ -15,6 +15,17 @@ MoonBit major mode for Emacs with tree-sitter highlighting and Eglot support.
 (require 'moonbit-mode)
 ```
 
+## Install from GitHub (package-vc-install)
+
+Emacs 29+ includes `package-vc-install` for installing packages directly from
+version control.
+
+```elisp
+(require 'package)
+(package-vc-install "https://github.com/tonyfettes/moonbit-mode")
+(require 'moonbit-mode)
+```
+
 ## Tree-sitter grammar
 
 Install the MoonBit grammar manually with Emacs `treesit`:
