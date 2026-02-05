@@ -25,7 +25,7 @@ Install the MoonBit grammar manually with Emacs `treesit`:
 (treesit-install-language-grammar 'moonbit)
 ```
 
-Queries are vendored in `queries/moonbit/` and loaded automatically.
+Tree-sitter highlighting rules are defined directly in `moonbit-mode.el`.
 
 ## LSP (Eglot)
 

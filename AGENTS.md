@@ -5,13 +5,12 @@ This repository contains `moonbit-mode`, an Emacs major mode for the MoonBit lan
 
 ## Key Files
 - `moonbit-mode.el`: main implementation. Tree-sitter font-lock rules live in `moonbit--ts-font-lock-rules`.
-- `queries/moonbit/*`: upstream tree-sitter queries for reference only (Emacs does not load these directly).
+- Tree-sitter font-lock rules are defined directly in `moonbit-mode.el`.
 - `README.md`: usage and installation notes.
 
 ## Development Notes
 - Requires Emacs 29.1+ (tree-sitter).
 - Tree-sitter highlighting is defined manually in `moonbit-mode.el` (no runtime query translation).
-- If you update upstream queries, port the changes into `moonbit--ts-font-lock-rules`.
 
 ## Quick Sanity Checks
 - Validate the font-lock rules:
