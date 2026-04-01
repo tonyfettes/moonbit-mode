@@ -47,6 +47,8 @@
 (defvar project-test-command nil
   "Project test command used by some project integrations.")
 
+(defvar eglot-server-programs)
+
 (defcustom moonbit-enable-compile-errors t
   "Whether to enable MoonBit compile error parsing in compilation buffers."
   :type 'boolean
@@ -91,6 +93,9 @@
     (let_mut_expression (lowercase_identifier) @font-lock-variable-name-face)
     (for_in_expression "for" (lowercase_identifier) @font-lock-variable-name-face "in")
     (for_binder (lowercase_identifier) @font-lock-variable-name-face)
+    (package_statement_identifier) @font-lock-variable-name-face
+    (package_assignment_statement
+     name: (package_statement_identifier) @font-lock-variable-name-face)
 
     (enum_constructor) @font-lock-constructor-face
     (constructor_expression (uppercase_identifier) @font-lock-constructor-face)
@@ -107,6 +112,7 @@
 
     (enum_definition (identifier) @font-lock-type-face)
     (struct_definition (identifier) @font-lock-type-face)
+    (tuple_struct_definition (identifier) @font-lock-type-face)
     (type_definition (identifier) @font-lock-type-face)
     (trait_definition (identifier) @font-lock-type-face)
     (type_alias_targets (identifier) @font-lock-type-face)
@@ -149,12 +155,15 @@
 
     (apply_expression (qualified_identifier (lowercase_identifier) @font-lock-function-call-face))
     (apply_expression (qualified_identifier (dot_lowercase_identifier) @font-lock-function-call-face))
+    (package_apply_statement
+     name: (package_statement_identifier) @font-lock-function-call-face)
 
     (method_expression (lowercase_identifier) @font-lock-function-call-face)
     (dot_apply_expression (dot_identifier) @font-lock-function-call-face)
     (dot_dot_apply_expression (dot_dot_identifier) @font-lock-function-call-face)
 
     (function_definition (function_identifier (lowercase_identifier) @font-lock-function-name-face))
+    (struct_constructor_declaration (lowercase_identifier) @font-lock-function-name-face)
     (function_alias_targets (lowercase_identifier) @font-lock-function-name-face)
     (function_alias_targets (dot_lowercase_identifier) @font-lock-function-name-face)
     (function_alias_targets (dot_lowercase_identifier) @font-lock-function-name-face)
@@ -169,6 +178,13 @@
     (loop_label) @font-lock-label-face
     ("continue" (label) @font-lock-label-face)
     ("break" (label) @font-lock-label-face)
+    (package_argument
+     label: (package_statement_identifier) @font-lock-label-face)
+    (package_argument
+     label: (string_literal) @font-lock-label-face)
+    (package_map_entry
+     key: (string_literal) @font-lock-label-face)
+    (where_clause_field (lowercase_identifier) @font-lock-label-face)
 
     ["+" "-" "*" "/" "%"
      "<<" ">>" "|" "&" "^"
@@ -188,7 +204,7 @@
     @font-lock-keyword-face
 
     ["guard" "let" "letrec" "and" "const"
-     "with" "as" "is" "lexmatch?" "using" "longest"]
+     "with" "as" "is" "lexmatch?" "using" "where" "longest" "nobreak"]
     @font-lock-keyword-face
 
     "derive" @font-lock-keyword-face
@@ -208,7 +224,7 @@
     ["noraise"] @font-lock-keyword-face
 
     ((lowercase_identifier) @font-lock-keyword-face
-     (:match "^(?:import|using|defer|lexmatch|recur)$" @font-lock-keyword-face))
+     (:match "^(?:import|using|where|proof_assert|proof_let|defer|lexmatch|recur|nobreak)$" @font-lock-keyword-face))
 
     ((lowercase_identifier) @font-lock-keyword-face
      (:match "^except$" @font-lock-keyword-face))
@@ -242,26 +258,86 @@
     (char_literal) @font-lock-string-face
 
     (comment) @font-lock-comment-face
+    (block_comment) @font-lock-comment-face
 
     (ERROR) @font-lock-warning-face)
   "Tree-sitter font-lock rules for MoonBit.")
 
+(defconst moonbit-mbtp--ts-font-lock-rules
+  '((predicate_definition name: (lowercase_identifier) @font-lock-function-name-face)
+    (logic_function_definition name: (lowercase_identifier) @font-lock-function-name-face)
+    (logic_function_definition receiver: (uppercase_identifier) @font-lock-type-face)
+    (lemma_definition name: (lowercase_identifier) @font-lock-function-name-face)
+
+    (mbtp_parameter name: (lowercase_identifier) @font-lock-parameter-face)
+    (mbtp_where_field name: (lowercase_identifier) @font-lock-label-face)
+    (mbtp_quantified_term binder: (lowercase_identifier) @font-lock-parameter-face)
+    (mbtp_arrow_parameter (lowercase_identifier) @font-lock-parameter-face)
+    (mbtp_parameter_decl (lowercase_identifier) @font-lock-parameter-face)
+
+    (mbtp_identifier_expression
+     (mbtp_value_path (identifier (lowercase_identifier)) @font-lock-variable-name-face))
+    (mbtp_identifier_expression
+     (mbtp_value_path (identifier (uppercase_identifier)) @font-lock-constant-face))
+    (mbtp_pattern_constructor (uppercase_identifier) @font-lock-constructor-face)
+    (mbtp_pattern_constructor (dot_uppercase_identifier) @font-lock-constructor-face)
+    (mbtp_type_path (identifier) @font-lock-type-face)
+
+    ["predicate" "lemma" "where" "proof_assert" "fn"] @font-lock-keyword-face
+    ["if" "else" "match"] @font-lock-keyword-face
+    ["pub"] @font-lock-keyword-face
+
+    ["∀" "∃" "→" "=>" "->" "!"
+     "+" "-" "*" "/" "%" "<" "<=" ">" ">="
+     "<<" ">>" "==" "!=" "&&" "||" "&" "^" "|"] @font-lock-operator-face
+
+    ["(" ")" "{" "}" "[" "]"] @font-lock-bracket-face
+    ["," ":" "::" ";"] @font-lock-delimiter-face
+
+    (string_literal) @font-lock-string-face
+    (integer_literal) @font-lock-number-face
+    (float_literal) @font-lock-number-face
+    (double_literal) @font-lock-number-face
+    (boolean_literal) @font-lock-constant-face
+    (char_literal) @font-lock-string-face
+    (comment) @font-lock-comment-face
+    (block_comment) @font-lock-comment-face
+    (ERROR) @font-lock-warning-face)
+  "Tree-sitter font-lock rules for MoonBit predicate files.")
+
 (defvar moonbit-ts-mode--font-lock-settings nil)
 
-(defun moonbit-ts-mode--font-lock-settings ()
-  "Return font-lock settings for `moonbit-ts-mode'."
-  (or moonbit-ts-mode--font-lock-settings
-      (setq moonbit-ts-mode--font-lock-settings
-            (treesit-font-lock-rules
-             :language 'moonbit
-             :feature 'default
-             moonbit--ts-font-lock-rules))))
+(defun moonbit-ts-mode--language (&optional file-name)
+  "Return the tree-sitter language for FILE-NAME or the current buffer."
+  (pcase (file-name-extension (or file-name buffer-file-name ""))
+    ("mbtp" 'moonbit_mbtp)
+    (_ 'moonbit)))
 
-(defun moonbit--treesit-ready-p ()
-  "Return non-nil if tree-sitter is ready for MoonBit."
+(defun moonbit-ts-mode--font-lock-rules (&optional language)
+  "Return tree-sitter font-lock rules for LANGUAGE."
+  (pcase (or language (moonbit-ts-mode--language))
+    ('moonbit_mbtp
+     (if (boundp 'moonbit-mbtp--ts-font-lock-rules)
+         moonbit-mbtp--ts-font-lock-rules
+       moonbit--ts-font-lock-rules))
+    (_ moonbit--ts-font-lock-rules)))
+
+(defun moonbit-ts-mode--font-lock-settings (&optional language)
+  "Return font-lock settings for `moonbit-ts-mode'."
+  (let* ((language (or language (moonbit-ts-mode--language)))
+         (cached-settings (alist-get language moonbit-ts-mode--font-lock-settings)))
+    (or cached-settings
+        (setf (alist-get language moonbit-ts-mode--font-lock-settings)
+              (treesit-font-lock-rules
+               :language language
+               :feature 'default
+               (moonbit-ts-mode--font-lock-rules language))))))
+
+(defun moonbit--treesit-ready-p (&optional language)
+  "Return non-nil if tree-sitter is ready for LANGUAGE."
   (and (fboundp 'treesit-available-p)
        (treesit-available-p)
-       (treesit-language-available-p 'moonbit)))
+       (treesit-language-available-p (or language (moonbit-ts-mode--language)))))
 
 (defun moonbit--project-root ()
   "Return the current project root, if any."
@@ -324,15 +400,16 @@
 ;;;###autoload
 (define-derived-mode moonbit-ts-mode prog-mode "MoonBit[TS]"
   "Tree-sitter major mode for MoonBit."
-  (if (treesit-ready-p 'moonbit t)
-      (progn
-        (treesit-parser-create 'moonbit)
-        (setq-local treesit-font-lock-settings (moonbit-ts-mode--font-lock-settings))
-        (setq-local treesit-font-lock-feature-list '((default)))
-        (moonbit--setup-common)
-        (treesit-major-mode-setup))
-    (message "MoonBit tree-sitter grammar unavailable; falling back to moonbit-mode")
-    (moonbit-mode)))
+  (let ((language (moonbit-ts-mode--language)))
+    (if (moonbit--treesit-ready-p language)
+        (progn
+          (treesit-parser-create language)
+          (setq-local treesit-font-lock-settings (moonbit-ts-mode--font-lock-settings language))
+          (setq-local treesit-font-lock-feature-list '((default)))
+          (moonbit--setup-common)
+          (treesit-major-mode-setup))
+      (message "MoonBit tree-sitter grammar `%s` unavailable; falling back to moonbit-mode" language)
+      (moonbit-mode))))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.mbt\\'" . moonbit-ts-mode))
