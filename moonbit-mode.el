@@ -468,15 +468,13 @@
 
 (defun moonbit--semantic-tokens-token-face (token-type token-modifiers)
   "Return the face list for TOKEN-TYPE and TOKEN-MODIFIERS."
-  (let ((faces (pcase token-type
-                 ("function_call" '(font-lock-function-call-face))
-                 ("function_decl" '(font-lock-function-name-face))
-                 (_ nil))))
+  (let (faces)
     (when (member "async" token-modifiers)
       (push 'moonbit-semantic-token-async-face faces))
     (when (member "error" token-modifiers)
       (push 'moonbit-semantic-token-error-face faces))
-    (nreverse faces)))
+    (and (member token-type '("function_call" "function_decl"))
+         (nreverse faces))))
 
 (defun moonbit--semantic-tokens-position-to-point (line character)
   "Return point for zero-based LINE and LSP CHARACTER."
