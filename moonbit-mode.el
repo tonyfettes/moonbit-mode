@@ -14,6 +14,8 @@
 ;;; Code:
 
 (require 'compile)
+(require 'cl-lib)
+(require 'eieio)
 (require 'project)
 (require 'treesit)
 
@@ -48,10 +50,38 @@
   "Project test command used by some project integrations.")
 
 (defvar eglot-server-programs)
+(declare-function eglot--lsp-position-to-point "eglot")
+(declare-function eglot--signal-textDocument/didChange "eglot")
+(declare-function eglot--TextDocumentIdentifier "eglot")
+(declare-function eglot-current-server "eglot")
+(declare-function eglot-managed-p "eglot")
+(declare-function eglot-server-capable "eglot")
+(declare-function jsonrpc-async-request "jsonrpc")
+(declare-function moonbit-eglot-server--eieio-childp "moonbit-mode")
 
 (defcustom moonbit-enable-compile-errors t
   "Whether to enable MoonBit compile error parsing in compilation buffers."
   :type 'boolean
+  :group 'moonbit)
+
+(defcustom moonbit-enable-semantic-tokens t
+  "Whether to enable LSP semantic token highlighting when available."
+  :type 'boolean
+  :group 'moonbit)
+
+(defcustom moonbit-semantic-tokens-refresh-delay 0.2
+  "Idle delay before refreshing MoonBit semantic token highlighting."
+  :type 'number
+  :group 'moonbit)
+
+(defface moonbit-semantic-token-async-face
+  '((t (:slant italic)))
+  "Face used for async MoonBit semantic tokens."
+  :group 'moonbit)
+
+(defface moonbit-semantic-token-error-face
+  '((t (:underline t)))
+  "Face used for error-raising MoonBit semantic tokens."
   :group 'moonbit)
 
 (defconst moonbit--compile-error-regexp
@@ -376,6 +406,180 @@
   (when (fboundp 'eglot-ensure)
     (eglot-ensure)))
 
+(defvar-local moonbit--semantic-token-overlays nil)
+(defvar-local moonbit--semantic-tokens-refresh-timer nil)
+(defvar-local moonbit--semantic-tokens-request-id 0)
+
+(define-minor-mode moonbit-semantic-tokens-mode
+  "Highlight MoonBit semantic tokens reported by `moonbit-lsp'."
+  :init-value nil
+  :lighter nil
+  (if moonbit-semantic-tokens-mode
+      (progn
+        (add-hook 'after-change-functions
+                  #'moonbit--semantic-tokens-after-change nil t)
+        (add-hook 'after-save-hook #'moonbit-semantic-tokens-refresh nil t)
+        (moonbit--semantic-tokens-schedule-refresh 0))
+    (remove-hook 'after-change-functions
+                 #'moonbit--semantic-tokens-after-change t)
+    (remove-hook 'after-save-hook #'moonbit-semantic-tokens-refresh t)
+    (moonbit--semantic-tokens-cancel-refresh)
+    (moonbit--semantic-tokens-clear)))
+
+(defun moonbit--semantic-tokens-clear ()
+  "Clear MoonBit semantic token overlays in the current buffer."
+  (mapc #'delete-overlay moonbit--semantic-token-overlays)
+  (setq moonbit--semantic-token-overlays nil))
+
+(defun moonbit--semantic-tokens-cancel-refresh ()
+  "Cancel any pending MoonBit semantic token refresh."
+  (when (timerp moonbit--semantic-tokens-refresh-timer)
+    (cancel-timer moonbit--semantic-tokens-refresh-timer))
+  (setq moonbit--semantic-tokens-refresh-timer nil))
+
+(defun moonbit--semantic-tokens-schedule-refresh (&optional delay)
+  "Refresh MoonBit semantic tokens after DELAY seconds of idleness."
+  (moonbit--semantic-tokens-cancel-refresh)
+  (setq moonbit--semantic-tokens-refresh-timer
+        (run-with-idle-timer
+         (or delay moonbit-semantic-tokens-refresh-delay) nil
+         (lambda (buffer)
+           (when (buffer-live-p buffer)
+             (with-current-buffer buffer
+               (setq moonbit--semantic-tokens-refresh-timer nil)
+               (moonbit-semantic-tokens-refresh))))
+         (current-buffer))))
+
+(defun moonbit--semantic-tokens-after-change (&rest _)
+  "Schedule a MoonBit semantic token refresh after a buffer change."
+  (moonbit--semantic-tokens-schedule-refresh))
+
+(defun moonbit--semantic-tokens-seq-elt (seq index)
+  "Return element INDEX from JSON array SEQ."
+  (if (vectorp seq)
+      (aref seq index)
+    (nth index seq)))
+
+(defun moonbit--semantic-tokens-seq-length (seq)
+  "Return the length of JSON array SEQ."
+  (if (vectorp seq)
+      (length seq)
+    (length seq)))
+
+(defun moonbit--semantic-tokens-token-face (token-type token-modifiers)
+  "Return the face list for TOKEN-TYPE and TOKEN-MODIFIERS."
+  (let ((faces (pcase token-type
+                 ("function_call" '(font-lock-function-call-face))
+                 ("function_decl" '(font-lock-function-name-face))
+                 (_ nil))))
+    (when (member "async" token-modifiers)
+      (push 'moonbit-semantic-token-async-face faces))
+    (when (member "error" token-modifiers)
+      (push 'moonbit-semantic-token-error-face faces))
+    (nreverse faces)))
+
+(defun moonbit--semantic-tokens-position-to-point (line character)
+  "Return point for zero-based LINE and LSP CHARACTER."
+  (eglot--lsp-position-to-point (list :line line :character character)))
+
+(defun moonbit--semantic-tokens-end-point (line character length)
+  "Return point at LINE, CHARACTER plus semantic token LENGTH."
+  (eglot--lsp-position-to-point
+   (list :line line :character (+ character length))))
+
+(defun moonbit--semantic-tokens-decode-modifiers (legend mask)
+  "Decode semantic token modifier MASK using LEGEND."
+  (let ((modifiers (plist-get legend :tokenModifiers))
+        result)
+    (dotimes (index (moonbit--semantic-tokens-seq-length modifiers))
+      (when (not (zerop (logand mask (ash 1 index))))
+        (push (moonbit--semantic-tokens-seq-elt modifiers index) result)))
+    (nreverse result)))
+
+(defun moonbit--semantic-tokens-apply (result)
+  "Apply semantic token RESULT from `moonbit-lsp' to the current buffer."
+  (let* ((provider (eglot-server-capable :semanticTokensProvider))
+         (legend (plist-get provider :legend))
+         (types (plist-get legend :tokenTypes))
+         (data (plist-get result :data))
+         (line 0)
+         (character 0)
+         overlays)
+    (when (and legend data)
+      (save-excursion
+        (save-restriction
+          (widen)
+          (cl-loop
+           for index from 0 below (moonbit--semantic-tokens-seq-length data) by 5
+           for delta-line = (moonbit--semantic-tokens-seq-elt data index)
+           for delta-start = (moonbit--semantic-tokens-seq-elt data (+ index 1))
+           for length = (moonbit--semantic-tokens-seq-elt data (+ index 2))
+           for token-type-index = (moonbit--semantic-tokens-seq-elt data (+ index 3))
+           for token-modifier-mask = (moonbit--semantic-tokens-seq-elt data (+ index 4))
+           do
+           (setq line (+ line delta-line))
+           (setq character (if (zerop delta-line)
+                               (+ character delta-start)
+                             delta-start))
+           (when (> length 0)
+             (let* ((token-type (moonbit--semantic-tokens-seq-elt
+                                 types token-type-index))
+                    (token-modifiers
+                     (moonbit--semantic-tokens-decode-modifiers
+                      legend token-modifier-mask))
+                    (face (moonbit--semantic-tokens-token-face
+                           token-type token-modifiers)))
+               (when face
+                 (let* ((start (moonbit--semantic-tokens-position-to-point
+                                line character))
+                        (end (moonbit--semantic-tokens-end-point
+                              line character length)))
+                   (when (< start end)
+                     (let ((overlay (make-overlay start end nil t nil)))
+                       (overlay-put overlay 'face face)
+                       (overlay-put overlay 'priority 20)
+                       (push overlay overlays))))))))))
+      (moonbit--semantic-tokens-clear)
+      (setq moonbit--semantic-token-overlays (nreverse overlays)))))
+
+(defun moonbit-semantic-tokens-refresh ()
+  "Refresh MoonBit semantic token highlighting."
+  (interactive)
+  (when (and moonbit-semantic-tokens-mode
+             (featurep 'eglot)
+             (fboundp 'eglot-current-server)
+             (eglot-current-server)
+             (eglot-server-capable :semanticTokensProvider))
+    (let ((server (eglot-current-server))
+          (buffer (current-buffer))
+          (tick (buffer-chars-modified-tick))
+          (request-id (cl-incf moonbit--semantic-tokens-request-id)))
+      (eglot--signal-textDocument/didChange)
+      (jsonrpc-async-request
+       server :textDocument/semanticTokens/full
+       `(:textDocument ,(eglot--TextDocumentIdentifier))
+       :deferred :moonbit-semantic-tokens
+       :success-fn
+       (lambda (result)
+         (when (buffer-live-p buffer)
+           (with-current-buffer buffer
+             (when (and moonbit-semantic-tokens-mode
+                        (= request-id moonbit--semantic-tokens-request-id))
+               (if (= tick (buffer-chars-modified-tick))
+                   (moonbit--semantic-tokens-apply result)
+                 (moonbit--semantic-tokens-schedule-refresh 0))))))))))
+
+(defun moonbit--maybe-enable-semantic-tokens ()
+  "Enable semantic tokens in MoonBit buffers managed by Eglot."
+  (if (and moonbit-enable-semantic-tokens
+           (derived-mode-p 'moonbit-mode 'moonbit-ts-mode)
+           (fboundp 'eglot-managed-p)
+           (eglot-managed-p)
+           (eglot-server-capable :semanticTokensProvider))
+      (moonbit-semantic-tokens-mode 1)
+    (when moonbit-semantic-tokens-mode
+      (moonbit-semantic-tokens-mode -1))))
+
 (defun moonbit--maybe-enable-compilation-errors ()
   "Enable MoonBit compilation error parsing if configured."
   (when moonbit-enable-compile-errors
@@ -417,8 +621,38 @@
 (add-to-list 'auto-mode-alist '("\\.mbti\\'" . moonbit-ts-mode))
 
 (with-eval-after-load 'eglot
-  (add-to-list 'eglot-server-programs `(moonbit-mode . ,moonbit-lsp-server-command))
-  (add-to-list 'eglot-server-programs `(moonbit-ts-mode . ,moonbit-lsp-server-command)))
+  (defclass moonbit-eglot-server (eglot-lsp-server) ()
+    "Eglot server class for MoonBit.")
+
+  (cl-defmethod eglot-client-capabilities ((_server moonbit-eglot-server))
+    (let* ((capabilities (cl-call-next-method))
+           (workspace (plist-get capabilities :workspace))
+           (text-document (plist-get capabilities :textDocument)))
+      (setf (plist-get workspace :semanticTokens) '(:refreshSupport t))
+      (setf (plist-get text-document :semanticTokens)
+            '(:dynamicRegistration :json-false
+              :requests (:range :json-false :full (:delta :json-false))
+              :tokenTypes ["namespace" "type" "class" "enum" "interface"
+                           "struct" "typeParameter" "parameter" "variable"
+                           "property" "enumMember" "event" "function"
+                           "method" "macro" "keyword" "modifier" "comment"
+                           "string" "number" "regexp" "operator" "decorator"
+                           "function_call" "function_decl"]
+              :tokenModifiers ["declaration" "definition" "readonly" "static"
+                               "deprecated" "abstract" "async" "modification"
+                               "documentation" "defaultLibrary" "error"]
+              :formats ["relative"]
+              :overlappingTokenSupport :json-false
+              :multilineTokenSupport :json-false
+              :serverCancelSupport t
+              :augmentsSyntaxTokens t))
+      capabilities))
+
+  (add-hook 'eglot-managed-mode-hook #'moonbit--maybe-enable-semantic-tokens)
+  (add-to-list 'eglot-server-programs
+               `(((moonbit-mode :language-id "moonbit")
+                  (moonbit-ts-mode :language-id "moonbit"))
+                 . (moonbit-eglot-server . ,moonbit-lsp-server-command))))
 
 (provide 'moonbit-mode)
 (provide 'moonbit-ts-mode)
