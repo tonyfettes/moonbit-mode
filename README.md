@@ -47,6 +47,13 @@ If `eglot` is available, it is started automatically in MoonBit buffers using
 (setq moonbit-lsp-server-command '("moonbit-lsp"))
 ```
 
+When `moonbit-lsp` reports semantic tokens, the mode also highlights async and
+error-raising function calls/declarations. You can disable this with:
+
+```elisp
+(setq moonbit-enable-semantic-tokens nil)
+```
+
 ## Project commands
 
 The mode sets project defaults:
