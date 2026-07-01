@@ -43,6 +43,12 @@
   :type 'string
   :group 'moonbit)
 
+(defcustom moonbit-indent-offset 2
+  "Number of spaces to use for each MoonBit indentation level."
+  :type 'natnum
+  :safe 'natnump
+  :group 'moonbit)
+
 (defvar project-compile-command nil
   "Project compile command used by some project integrations.")
 
@@ -337,6 +343,233 @@
 
 (defvar moonbit-ts-mode--font-lock-settings nil)
 
+(defconst moonbit-ts-mode--indent-definition-parent-regexp
+  (regexp-opt
+   '("const_definition"
+     "enum_definition"
+     "error_type_definition"
+     "function_alias_definition"
+     "function_definition"
+     "impl_declaration"
+     "impl_definition"
+     "struct_constructor_declaration"
+     "struct_definition"
+     "test_definition"
+     "trait_alias_definition"
+     "trait_definition"
+     "tuple_struct_definition"
+     "type_alias_definition"
+     "type_definition"
+     "value_definition"))
+  "Regexp matching MoonBit definition nodes whose bodies are indented.")
+
+(defconst moonbit-ts-mode--indent-block-parent-regexp
+  (regexp-opt
+   '("block_expression"
+     "else_clause"
+     "guard_else_expression"
+     "nobreak_clause"
+     "noraise_clause"
+     "try_catch_clause"
+     "try_else_clause"
+     "try_expression"
+     "where_clause"))
+  "Regexp matching MoonBit block-like nodes whose contents are indented.")
+
+(defconst moonbit-ts-mode--indent-branch-parent-regexp
+  (regexp-opt
+   '("case_clause"
+     "guard_expression"
+     "guard_let_expression"
+     "if_expression"
+     "lexmatch_case_clause"
+     "lexmatch_expression"
+     "match_expression"
+     "matrix_case_clause"
+     "try_catch_expression"))
+  "Regexp matching MoonBit branch-like nodes whose clauses are indented.")
+
+(defconst moonbit-ts-mode--indent-list-parent-regexp
+  (regexp-opt
+   '("argument"
+     "arguments"
+     "constructor_parameter"
+     "constructor_pattern"
+     "constructor_pattern_argument"
+     "derive_directive"
+     "enum_constructor"
+     "enum_constructor_payload"
+     "import_declaration"
+     "labelled_argument"
+     "labelled_parameter"
+     "optional_argument"
+     "optional_parameter"
+     "optional_parameter_with_default"
+     "package_argument"
+     "parameter"
+     "parameters"
+     "positional_parameter"
+     "trait_method_parameter"
+     "type_arguments"
+     "type_parameters"
+     "using_targets"))
+  "Regexp matching MoonBit list-like nodes whose items are indented.")
+
+(defconst moonbit-ts-mode--indent-field-parent-regexp
+  (regexp-opt
+   '("derive_item"
+     "import_item"
+     "map_element_expression"
+     "map_element_pattern"
+     "package_import_for_clause"
+     "package_map_entry"
+     "struct_field_declaration"
+     "struct_field_expression"
+     "struct_field_pattern"
+     "super_trait_declaration"
+     "trait_method_declaration"
+     "where_clause_field"))
+  "Regexp matching MoonBit field-like nodes whose continuations are indented.")
+
+(defconst moonbit-ts-mode--indent-compound-parent-regexp
+  (regexp-opt
+   '("array_expression"
+     "array_pattern"
+     "array_sub_pattern"
+     "bytes_literal"
+     "list_comprehension_expression"
+     "map_expression"
+     "map_pattern"
+     "package_array_expression"
+     "package_map_expression"
+     "struct_expression"
+     "struct_pattern"
+     "tuple_expression"
+     "tuple_pattern"
+     "tuple_type"))
+  "Regexp matching MoonBit compound literal nodes whose items are indented.")
+
+(defconst moonbit-ts-mode--indent-expression-parent-regexp
+  (regexp-opt
+   '("access_expression"
+     "and_expression"
+     "anonymous_lambda_expression"
+     "anonymous_matrix_lambda_expression"
+     "append_expression"
+     "apply_expression"
+     "array_access_expression"
+     "arrow_function_expression"
+     "as_expression"
+     "assign_expression"
+     "attribute_expression"
+     "binary_expression"
+     "constraint_expression"
+     "constructor_expression"
+     "defer_expression"
+     "dot_apply_expression"
+     "dot_dot_apply_expression"
+     "for_expression"
+     "for_in_expression"
+     "is_expression"
+     "labeled_expression"
+     "let_expression"
+     "let_mut_expression"
+     "letrec_expression"
+     "loop_expression"
+     "method_expression"
+     "named_lambda_expression"
+     "named_matrix_expression"
+     "package_apply_statement"
+     "package_assignment_statement"
+     "package_expression"
+     "package_statement"
+     "parenthesized_expression"
+     "pipe_arrow_function_expression"
+     "proof_assert_expression"
+     "proof_let_expression"
+     "raise_expression"
+     "range_expression"
+     "regex_match_expression"
+     "regex_match_rhs"
+     "return_expression"
+     "unary_expression"
+     "while_expression"))
+  "Regexp matching MoonBit expression nodes whose continuations are indented.")
+
+(defconst moonbit-mbtp--indent-definition-parent-regexp
+  (regexp-opt
+   '("lemma_definition"
+     "logic_function_definition"
+     "predicate_definition"))
+  "Regexp matching MoonBit predicate definition nodes whose bodies are indented.")
+
+(defconst moonbit-mbtp--indent-block-parent-regexp
+  (regexp-opt
+   '("lemma_block_expression"
+     "mbtp_logic_block_expression"
+     "mbtp_predicate_body"
+     "mbtp_where_clause"))
+  "Regexp matching MoonBit predicate block nodes whose contents are indented.")
+
+(defconst moonbit-mbtp--indent-branch-parent-regexp
+  (regexp-opt
+   '("lemma_if_expression"
+     "lemma_match_case"
+     "lemma_match_expression"
+     "mbtp_match_case"
+     "mbtp_match_expression"))
+  "Regexp matching MoonBit predicate branch nodes whose clauses are indented.")
+
+(defconst moonbit-mbtp--indent-list-parent-regexp
+  (regexp-opt
+   '("mbtp_arrow_parameter"
+     "mbtp_parameter"
+     "mbtp_parameter_decl"
+     "mbtp_parameter_list"))
+  "Regexp matching MoonBit predicate list nodes whose items are indented.")
+
+(defconst moonbit-mbtp--indent-expression-parent-regexp
+  (regexp-opt
+   '("attribute_expression"
+     "lemma_nonsequence_expression"
+     "lemma_proof_assert_expression"
+     "mbtp_anonymous_function_expression"
+     "mbtp_apply_expression"
+     "mbtp_apply_expression_no_match"
+     "mbtp_array_access_expression"
+     "mbtp_array_access_expression_no_match"
+     "mbtp_arrow_function_expression"
+     "mbtp_binary_expression"
+     "mbtp_binary_expression_no_match"
+     "mbtp_declaration"
+     "mbtp_dot_apply_expression"
+     "mbtp_dot_apply_expression_no_match"
+     "mbtp_expression"
+     "mbtp_expression_no_match"
+     "mbtp_field_expression"
+     "mbtp_field_expression_no_match"
+     "mbtp_lambda_expression"
+     "mbtp_parenthesized_expression"
+     "mbtp_parenthesized_expression_no_match"
+     "mbtp_quantified_term"
+     "mbtp_tuple_expression"
+     "mbtp_tuple_expression_no_match"
+     "mbtp_tuple_type"
+     "mbtp_unary_expression"
+     "mbtp_unary_expression_no_match"
+     "mbtp_where_field"))
+  "Regexp matching predicate expression nodes whose continuations are indented.")
+
+(defun moonbit-ts-mode--indent-after-attributes-p (node parent _bol)
+  "Check whether NODE is the declaration header after attributes in PARENT."
+  (when (and node parent)
+    (let ((first-child (treesit-node-child parent 0)))
+      (and first-child
+           (equal (treesit-node-type first-child) "attributes")
+           (let ((next-sibling (treesit-node-next-sibling first-child)))
+             (and next-sibling
+                  (treesit-node-eq node next-sibling)))))))
+
 (defun moonbit-ts-mode--language (&optional file-name)
   "Return the tree-sitter language for FILE-NAME or the current buffer."
   (pcase (file-name-extension (or file-name buffer-file-name ""))
@@ -362,6 +595,60 @@
                :language language
                :feature 'default
                (moonbit-ts-mode--font-lock-rules language))))))
+
+(defconst moonbit-ts-mode--treesit-indent-rules
+  `((moonbit
+     ((parent-is "source_file") column-0 0)
+     ((parent-is "structure") column-0 0)
+     (moonbit-ts-mode--indent-after-attributes-p parent-bol 0)
+     ((node-is "}") parent-bol 0)
+     ((node-is ")") parent-bol 0)
+     ((node-is "]") parent-bol 0)
+     ((node-is "else") parent-bol 0)
+     ((node-is "^\\(?:catch\\|try_catch_clause\\)$") parent-bol 0)
+     ((parent-is "multiline_string_literal") parent-bol 0)
+     ((parent-is "block_comment") parent-bol 1)
+     ((parent-is ,moonbit-ts-mode--indent-definition-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-ts-mode--indent-block-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-ts-mode--indent-branch-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-ts-mode--indent-list-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-ts-mode--indent-field-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-ts-mode--indent-compound-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-ts-mode--indent-expression-parent-regexp)
+      parent-bol moonbit-indent-offset))
+    (moonbit_mbtp
+     ((parent-is "source_file") column-0 0)
+     ((parent-is "structure") column-0 0)
+     (moonbit-ts-mode--indent-after-attributes-p parent-bol 0)
+     ((node-is "}") parent-bol 0)
+     ((node-is ")") parent-bol 0)
+     ((node-is "]") parent-bol 0)
+     ((node-is "else") parent-bol 0)
+     ((parent-is "multiline_string_literal") parent-bol 0)
+     ((parent-is "block_comment") parent-bol 1)
+     ((parent-is ,moonbit-mbtp--indent-definition-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-mbtp--indent-block-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-mbtp--indent-branch-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is ,moonbit-mbtp--indent-list-parent-regexp)
+      parent-bol moonbit-indent-offset)
+     ((parent-is "^lemma_sequence_expression$") parent-bol 0)
+     ((parent-is ,moonbit-mbtp--indent-expression-parent-regexp)
+      parent-bol moonbit-indent-offset)))
+  "Tree-sitter indentation rules for MoonBit buffers.")
+
+(defun moonbit-ts-mode--indent-rules (&optional language)
+  "Return tree-sitter indentation rules for LANGUAGE."
+  (let ((language (or language (moonbit-ts-mode--language))))
+    (list (assq language moonbit-ts-mode--treesit-indent-rules))))
 
 (defun moonbit--treesit-ready-p (&optional language)
   "Return non-nil if tree-sitter is ready for LANGUAGE."
@@ -592,6 +879,8 @@
   (setq-local comment-start "// ")
   (setq-local comment-end "")
   (setq-local comment-start-skip "//+\\s-*")
+  (setq-local indent-tabs-mode nil)
+  (setq-local indent-line-function #'treesit-simple-indent)
   (moonbit--setup-project-commands)
   (moonbit--maybe-enable-compilation-errors)
   (moonbit--maybe-enable-eglot))
@@ -605,6 +894,7 @@
     (treesit-parser-create language)
     (setq-local treesit-font-lock-settings (moonbit-ts-mode--font-lock-settings language))
     (setq-local treesit-font-lock-feature-list '((default)))
+    (setq-local treesit-simple-indent-rules (moonbit-ts-mode--indent-rules language))
     (moonbit--setup-common)
     (treesit-major-mode-setup)))
 

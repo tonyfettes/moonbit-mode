@@ -38,6 +38,15 @@ Install the MoonBit grammar manually with Emacs `treesit`:
 
 Tree-sitter highlighting rules are defined directly in `moonbit-ts-mode.el`.
 
+## Indentation
+
+MoonBit buffers use `moonbit-indent-offset` spaces per indentation level. The
+default is 2.
+
+```elisp
+(setq moonbit-indent-offset 2)
+```
+
 ## LSP (Eglot)
 
 If `eglot` is available, it is started automatically in MoonBit buffers using
