@@ -6,10 +6,9 @@ MoonBit major mode for Emacs with tree-sitter highlighting and Eglot support.
 
 - Emacs 29+ for `treesit` support
 - MoonBit toolchain
-- `moonbit-lsp` in `PATH` (for LSP)
+- `moon` in `PATH` (for LSP via `moon lsp`)
 
 ## Installation
-
 ```elisp
 (add-to-list 'load-path "/path/to/moonbit-mode")
 (require 'moonbit-mode)
@@ -22,7 +21,7 @@ version control.
 
 ```elisp
 (require 'package)
-(package-vc-install "https://github.com/tonyfettes/moonbit-mode")
+(package-vc-install "https://github.com/moonbit-community/moonbit-mode")
 (require 'moonbit-mode)
 ```
 
@@ -41,14 +40,15 @@ Tree-sitter highlighting rules are defined directly in `moonbit-mode.el`.
 ## LSP (Eglot)
 
 If `eglot` is available, it is started automatically in MoonBit buffers using
-`moonbit-lsp`. You can customize the command via:
+`moon lsp`. You can customize the command via:
 
 ```elisp
-(setq moonbit-lsp-server-command '("moonbit-lsp"))
+(setq moonbit-lsp-server-command '("moon" "lsp"))
 ```
 
-When `moonbit-lsp` reports semantic tokens, the mode also highlights async and
-error-raising function calls/declarations. You can disable this with:
+When the MoonBit language server reports semantic tokens, the mode also
+highlights async and error-raising function calls/declarations. You can disable
+this with:
 
 ```elisp
 (setq moonbit-enable-semantic-tokens nil)

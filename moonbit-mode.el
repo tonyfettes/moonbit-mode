@@ -23,7 +23,7 @@
   "MoonBit language support."
   :group 'languages)
 
-(defcustom moonbit-lsp-server-command '("moonbit-lsp")
+(defcustom moonbit-lsp-server-command '("moon" "lsp")
   "Command to start the MoonBit language server."
   :type '(repeat string)
   :group 'moonbit)
@@ -411,7 +411,7 @@
 (defvar-local moonbit--semantic-tokens-request-id 0)
 
 (define-minor-mode moonbit-semantic-tokens-mode
-  "Highlight MoonBit semantic tokens reported by `moonbit-lsp'."
+  "Highlight semantic tokens reported by the MoonBit language server."
   :init-value nil
   :lighter nil
   (if moonbit-semantic-tokens-mode
@@ -497,7 +497,7 @@
     (nreverse result)))
 
 (defun moonbit--semantic-tokens-apply (result)
-  "Apply semantic token RESULT from `moonbit-lsp' to the current buffer."
+  "Apply semantic token RESULT from the MoonBit language server to the current buffer."
   (let* ((provider (eglot-server-capable :semanticTokensProvider))
          (legend (plist-get provider :legend))
          (types (plist-get legend :tokenTypes))
