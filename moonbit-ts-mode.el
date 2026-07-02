@@ -233,10 +233,10 @@ comments in their embedded MoonBit expressions are real comments."
     (trait_alias_target (identifier) @font-lock-type-face)
 
     ((qualified_type_identifier) @font-lock-builtin-face
-     (:match "^(?:Unit|Bool|Byte|Int16|UInt16|Int|UInt|Int64|UInt64|Float|Double|FixedArray|Array|Bytes|String|Error|Self)$"
+     (:match "^\\(?:Unit\\|Bool\\|Byte\\|Int16\\|UInt16\\|Int\\|UInt\\|Int64\\|UInt64\\|Float\\|Double\\|FixedArray\\|Array\\|Bytes\\|String\\|Error\\|Self\\)$"
              @font-lock-builtin-face))
     ((qualified_type_identifier) @font-lock-builtin-face
-     (:match "^(?:Eq|Compare|Hash|Show|Default|ToJson|FromJson)$"
+     (:match "^\\(?:Eq\\|Compare\\|Hash\\|Show\\|Default\\|ToJson\\|FromJson\\)$"
              @font-lock-builtin-face))
 
     (struct_field_declaration (lowercase_identifier) @font-lock-property-name-face)
@@ -260,7 +260,7 @@ comments in their embedded MoonBit expressions are real comments."
     ((attribute) @font-lock-preprocessor-face
      (:match "^#coverage\\.skip$" @font-lock-preprocessor-face))
     ((attribute) @font-lock-preprocessor-face
-     (:match "^#deprecated\\(.*\\)" @font-lock-preprocessor-face))
+     (:match "^#deprecated\\(?:([^)]*)\\)?$" @font-lock-preprocessor-face))
 
     (apply_expression (qualified_identifier (lowercase_identifier) @font-lock-function-call-face))
     (apply_expression (qualified_identifier (dot_lowercase_identifier) @font-lock-function-call-face))
@@ -332,11 +332,14 @@ comments in their embedded MoonBit expressions are real comments."
 
     ["noraise"] @font-lock-keyword-face
 
-    ((lowercase_identifier) @font-lock-keyword-face
-     (:match "^(?:import|using|where|proof_assert|proof_let|defer|lexmatch|recur|nobreak)$" @font-lock-keyword-face))
-
-    ((lowercase_identifier) @font-lock-keyword-face
-     (:match "^except$" @font-lock-keyword-face))
+    (import_declaration "import" @font-lock-keyword-face)
+    (using_declaration "using" @font-lock-keyword-face)
+    (lexmatch_expression "lexmatch" @font-lock-keyword-face)
+    (where_clause "where" @font-lock-keyword-face)
+    (nobreak_clause "nobreak" @font-lock-keyword-face)
+    (defer_expression "defer" @font-lock-keyword-face)
+    (proof_assert_expression "proof_assert" @font-lock-keyword-face)
+    (proof_let_expression "proof_let" @font-lock-keyword-face)
 
     [";" ","] @font-lock-delimiter-face
     ":" @font-lock-delimiter-face
@@ -371,6 +374,11 @@ comments in their embedded MoonBit expressions are real comments."
 
     (ERROR) @font-lock-warning-face)
   "Tree-sitter font-lock rules for MoonBit.")
+
+(defconst moonbit-ts-mode--contextual-keyword-font-lock-rules
+  '(((lowercase_identifier) @font-lock-keyword-face
+     (:match "^\\(?:except\\|recur\\)$" @font-lock-keyword-face)))
+  "High-priority font-lock rules for MoonBit contextual keywords.")
 
 (defconst moonbit-mbtp--ts-font-lock-rules
   '((predicate_definition name: (lowercase_identifier) @font-lock-function-name-face)
@@ -905,7 +913,11 @@ comments in their embedded MoonBit expressions are real comments."
               (treesit-font-lock-rules
                :language language
                :feature 'default
-               (moonbit-ts-mode--font-lock-rules language))))))
+               (moonbit-ts-mode--font-lock-rules language)
+               :language language
+               :feature 'default
+               :override t
+               moonbit-ts-mode--contextual-keyword-font-lock-rules)))))
 
 (defconst moonbit-ts-mode--treesit-indent-rules
   `((moonbit
