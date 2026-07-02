@@ -49,12 +49,6 @@
   :safe 'natnump
   :group 'moonbit)
 
-(defvar project-compile-command nil
-  "Project compile command used by some project integrations.")
-
-(defvar project-test-command nil
-  "Project test command used by some project integrations.")
-
 (defvar eglot-server-programs)
 (declare-function eglot--lsp-position-to-point "eglot")
 (declare-function eglot--signal-textDocument/didChange "eglot")
@@ -1103,9 +1097,7 @@ comments in their embedded MoonBit expressions are real comments."
 
 (defun moonbit--setup-project-commands ()
   "Set project commands for MoonBit buffers."
-  (setq-local compile-command moonbit-project-build-command)
-  (setq-local project-compile-command moonbit-project-build-command)
-  (setq-local project-test-command moonbit-project-test-command))
+  (setq-local compile-command moonbit-project-build-command))
 
 (defun moonbit--maybe-enable-eglot ()
   "Enable Eglot for MoonBit buffers when available."
