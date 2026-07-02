@@ -1,14 +1,14 @@
-;;; moonbit-mode.el --- MoonBit major mode with tree-sitter -*- lexical-binding: t; -*-
+;;; moonbit-ts-mode.el --- MoonBit tree-sitter major mode -*- lexical-binding: t; -*-
 
 ;; Author: MoonBit Contributors
-;; URL: https://github.com/tonyfettes/moonbit-mode
+;; URL: https://github.com/moonbit-community/moonbit-ts-mode
 ;; Keywords: languages, tree-sitter
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1"))
 
 ;;; Commentary:
 ;;
-;; MoonBit major mode with optional tree-sitter and Eglot integration.
+;; MoonBit tree-sitter major mode with Eglot integration.
 ;;
 
 ;;; Code:
@@ -57,7 +57,7 @@
 (declare-function eglot-managed-p "eglot")
 (declare-function eglot-server-capable "eglot")
 (declare-function jsonrpc-async-request "jsonrpc")
-(declare-function moonbit-eglot-server--eieio-childp "moonbit-mode")
+(declare-function moonbit-eglot-server--eieio-childp "moonbit-ts-mode")
 
 (defcustom moonbit-enable-compile-errors t
   "Whether to enable MoonBit compile error parsing in compilation buffers."
@@ -572,7 +572,7 @@
 (defun moonbit--maybe-enable-semantic-tokens ()
   "Enable semantic tokens in MoonBit buffers managed by Eglot."
   (if (and moonbit-enable-semantic-tokens
-           (derived-mode-p 'moonbit-mode 'moonbit-ts-mode)
+           (derived-mode-p 'moonbit-ts-mode)
            (fboundp 'eglot-managed-p)
            (eglot-managed-p)
            (eglot-server-capable :semanticTokensProvider))
@@ -597,23 +597,16 @@
   (moonbit--maybe-enable-eglot))
 
 ;;;###autoload
-(define-derived-mode moonbit-mode prog-mode "MoonBit"
-  "Major mode for MoonBit."
-  (moonbit--setup-common))
-
-;;;###autoload
 (define-derived-mode moonbit-ts-mode prog-mode "MoonBit[TS]"
   "Tree-sitter major mode for MoonBit."
   (let ((language (moonbit-ts-mode--language)))
-    (if (moonbit--treesit-ready-p language)
-        (progn
-          (treesit-parser-create language)
-          (setq-local treesit-font-lock-settings (moonbit-ts-mode--font-lock-settings language))
-          (setq-local treesit-font-lock-feature-list '((default)))
-          (moonbit--setup-common)
-          (treesit-major-mode-setup))
-      (message "MoonBit tree-sitter grammar `%s` unavailable; falling back to moonbit-mode" language)
-      (moonbit-mode))))
+    (unless (moonbit--treesit-ready-p language)
+      (user-error "MoonBit tree-sitter grammar `%s` is unavailable" language))
+    (treesit-parser-create language)
+    (setq-local treesit-font-lock-settings (moonbit-ts-mode--font-lock-settings language))
+    (setq-local treesit-font-lock-feature-list '((default)))
+    (moonbit--setup-common)
+    (treesit-major-mode-setup)))
 
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.mbt\\'" . moonbit-ts-mode))
@@ -650,11 +643,9 @@
 
   (add-hook 'eglot-managed-mode-hook #'moonbit--maybe-enable-semantic-tokens)
   (add-to-list 'eglot-server-programs
-               `(((moonbit-mode :language-id "moonbit")
-                  (moonbit-ts-mode :language-id "moonbit"))
+               `((moonbit-ts-mode :language-id "moonbit")
                  . (moonbit-eglot-server . ,moonbit-lsp-server-command))))
 
-(provide 'moonbit-mode)
 (provide 'moonbit-ts-mode)
 
-;;; moonbit-mode.el ends here
+;;; moonbit-ts-mode.el ends here
