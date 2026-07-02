@@ -80,6 +80,79 @@
   :type 'number
   :group 'moonbit)
 
+(defvar moonbit-ts-mode--syntax-table
+  (let ((table (make-syntax-table)))
+    (modify-syntax-entry ?_ "w" table)
+    (modify-syntax-entry ?/ ". 124b" table)
+    (modify-syntax-entry ?* ". 23" table)
+    (modify-syntax-entry ?\n "> b" table)
+    (modify-syntax-entry ?\^m "> b" table)
+    (modify-syntax-entry ?\" "\"" table)
+    (modify-syntax-entry ?' "\"" table)
+    (modify-syntax-entry ?\\ "\\" table)
+    table)
+  "Syntax table for `moonbit-ts-mode'.")
+
+(defconst moonbit-ts-mode--syntax-propertize-query
+  '([(multiline_string_content)
+     (multiline_interpolation_content)] @multiline-string-content)
+  "Tree-sitter query for MoonBit multiline string contents.")
+
+(defvar-local moonbit-ts-mode--compiled-syntax-propertize-query nil
+  "Compiled `syntax-propertize' query for the current MoonBit grammar.")
+
+(defun moonbit-ts-mode--syntax-propertize (start end)
+  "Apply syntax properties to MoonBit strings between START and END.
+
+In multiline string contents, slash characters must not retain syntax as
+comment starters.  Interpolators are deliberately excluded because
+comments in their embedded MoonBit expressions are real comments."
+  (dolist (node
+           (treesit-query-capture
+            (moonbit-ts-mode--language)
+            moonbit-ts-mode--compiled-syntax-propertize-query
+            start end t))
+    ;; A `multiline_interpolation_content' node containing an
+    ;; `interpolator' has a named child; literal content nodes are leaves.
+    (when (zerop (treesit-node-child-count node t))
+      (let ((beg (max start (treesit-node-start node)))
+            (limit (min end (treesit-node-end node))))
+        (when (< beg limit)
+          (save-excursion
+            (goto-char beg)
+            (while (search-forward "/" limit t)
+              (put-text-property
+               (1- (point)) (point) 'syntax-table
+               (string-to-syntax ".")))))))))
+
+(defun moonbit-ts-mode--multiline-string-line-p ()
+  "Return non-nil if the current line is a multiline string fragment."
+  (let* ((line-beg (line-beginning-position))
+         (line-end (line-end-position))
+         (pos (if (> line-end line-beg) (1- line-end) line-end))
+         (node (treesit-node-at pos (moonbit-ts-mode--language)))
+         (fragment
+          (and node
+               (treesit-parent-until
+                node
+                (lambda (candidate)
+                  (member (treesit-node-type candidate)
+                          '("multiline_string_fragment"
+                            "multiline_interpolation_fragment")))
+                t))))
+    (and fragment
+         (>= (treesit-node-start fragment) line-beg)
+         (= (treesit-node-end fragment) line-end))))
+
+(defun moonbit-ts-mode--comment-insert ()
+  "Insert a comment without modifying a multiline string's value."
+  (if (moonbit-ts-mode--multiline-string-line-p)
+      (progn
+        (back-to-indentation)
+        (insert comment-start))
+    (let ((comment-insert-comment-function nil))
+      (comment-indent))))
+
 (defface moonbit-semantic-token-async-face
   '((t (:slant italic)))
   "Face used for async MoonBit semantic tokens."
@@ -876,9 +949,20 @@
 
 (defun moonbit--setup-common ()
   "Shared setup for MoonBit modes."
+  (setq-local moonbit-ts-mode--compiled-syntax-propertize-query
+              (treesit-query-compile
+               (moonbit-ts-mode--language)
+               moonbit-ts-mode--syntax-propertize-query))
+  (setq-local syntax-propertize-function
+              #'moonbit-ts-mode--syntax-propertize)
+  (add-hook 'syntax-propertize-extend-region-functions
+            #'syntax-propertize-wholelines nil t)
   (setq-local comment-start "// ")
   (setq-local comment-end "")
-  (setq-local comment-start-skip "//+\\s-*")
+  (setq-local comment-start-skip "\\(?:///|\\|//+\\)\\s-*")
+  (setq-local comment-use-syntax t)
+  (setq-local comment-insert-comment-function
+              #'moonbit-ts-mode--comment-insert)
   (setq-local indent-tabs-mode nil)
   (setq-local indent-line-function #'treesit-simple-indent)
   (moonbit--setup-project-commands)
@@ -888,6 +972,7 @@
 ;;;###autoload
 (define-derived-mode moonbit-ts-mode prog-mode "MoonBit[TS]"
   "Tree-sitter major mode for MoonBit."
+  :syntax-table moonbit-ts-mode--syntax-table
   (let ((language (moonbit-ts-mode--language)))
     (unless (moonbit--treesit-ready-p language)
       (user-error "MoonBit tree-sitter grammar `%s` is unavailable" language))
