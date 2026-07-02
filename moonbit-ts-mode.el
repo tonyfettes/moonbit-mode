@@ -723,7 +723,7 @@ comments in their embedded MoonBit expressions are real comments."
   (let ((language (or language (moonbit-ts-mode--language))))
     (list (assq language moonbit-ts-mode--treesit-indent-rules))))
 
-(defconst moonbit-ts-mode--defun-type-regexp
+(defconst moonbit-ts-mode--definition-type-regexp
   (regexp-opt
    '("const_definition"
      "enum_definition"
@@ -744,7 +744,66 @@ comments in their embedded MoonBit expressions are real comments."
      "type_alias_definition"
      "type_definition"
      "value_definition"))
+  "Regexp matching MoonBit tree-sitter definition node types.")
+
+(defconst moonbit-ts-mode--defun-type-regexp
+  moonbit-ts-mode--definition-type-regexp
   "Regexp matching MoonBit tree-sitter defun node types.")
+
+(defconst moonbit-ts-mode--outline-type-regexp
+  moonbit-ts-mode--definition-type-regexp
+  "Regexp matching MoonBit tree-sitter outline heading node types.")
+
+(defconst moonbit-ts-mode--defun-name-node-regexp
+  (regexp-opt
+   '("function_identifier"
+     "identifier"
+     "lowercase_identifier"
+     "package_statement_identifier"
+     "qualified_identifier"
+     "qualified_type_identifier"
+     "string_literal"
+     "type_identifier"
+     "uppercase_identifier"))
+  "Regexp matching MoonBit defun name node types.")
+
+(defun moonbit-ts-mode--node-text (node)
+  "Return NODE text without properties, or nil if NODE is nil."
+  (when node
+    (treesit-node-text node t)))
+
+(defun moonbit-ts-mode--direct-child-of-type (node type)
+  "Return NODE's first named direct child whose type is TYPE."
+  (seq-find
+   (lambda (child)
+     (equal (treesit-node-type child) type))
+   (treesit-node-children node t)))
+
+(defun moonbit-ts-mode--defun-name (node)
+  "Return the name for MoonBit defun NODE."
+  (pcase (treesit-node-type node)
+    ((or "function_definition" "impl_definition")
+     (moonbit-ts-mode--node-text
+      (moonbit-ts-mode--direct-child-of-type node "function_identifier")))
+    ("test_definition"
+     (moonbit-ts-mode--node-text
+      (moonbit-ts-mode--direct-child-of-type node "string_literal")))
+    ((or "type_alias_definition"
+         "trait_alias_definition"
+         "function_alias_definition")
+     (let ((target-type
+            (pcase (treesit-node-type node)
+              ("type_alias_definition" "type_alias_targets")
+              ("trait_alias_definition" "trait_alias_targets")
+              (_ "function_alias_targets"))))
+       (moonbit-ts-mode--node-text
+        (moonbit-ts-mode--direct-child-of-type node target-type))))
+    (_
+     (or (moonbit-ts-mode--node-text
+          (treesit-node-child-by-field-name node "name"))
+         (moonbit-ts-mode--node-text
+          (treesit-search-subtree
+           node moonbit-ts-mode--defun-name-node-regexp nil nil 3))))))
 
 (defun moonbit--treesit-ready-p (&optional language)
   "Return non-nil if tree-sitter is ready for LANGUAGE."
@@ -988,7 +1047,12 @@ comments in their embedded MoonBit expressions are real comments."
               #'moonbit-ts-mode--comment-insert)
   (setq-local indent-tabs-mode nil)
   (setq-local indent-line-function #'treesit-simple-indent)
-  (setq-local treesit-outline-predicate moonbit-ts-mode--defun-type-regexp)
+  (setq-local treesit-outline-predicate moonbit-ts-mode--outline-type-regexp)
+  (setq-local treesit-defun-type-regexp moonbit-ts-mode--defun-type-regexp)
+  (setq-local treesit-defun-name-function #'moonbit-ts-mode--defun-name)
+  (setq-local treesit-simple-imenu-settings
+              `((nil ,moonbit-ts-mode--definition-type-regexp
+                     nil moonbit-ts-mode--defun-name)))
   (moonbit--setup-project-commands)
   (moonbit--maybe-enable-compilation-errors)
   (moonbit--maybe-enable-eglot))

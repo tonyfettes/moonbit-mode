@@ -55,6 +55,14 @@ MoonBit buffers provide `outline-minor-mode` headings for top-level
 definitions such as functions, tests, types, traits, implementations, and
 predicate files.
 
+## Navigation
+
+MoonBit buffers support tree-sitter based defun navigation for commands such as
+`beginning-of-defun`, `end-of-defun`, and `mark-defun`.
+
+MoonBit definitions are also indexed by Imenu, including functions, types,
+implementations, tests, and predicate definitions.
+
 ## LSP (Eglot)
 
 If `eglot` is available, it is started automatically in MoonBit buffers using
