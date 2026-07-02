@@ -1371,10 +1371,14 @@ comments in their embedded MoonBit expressions are real comments."
               :augmentsSyntaxTokens t))
       capabilities))
 
+  (defun moonbit-ts-mode--eglot-contact (_interactive _project)
+    "Return the Eglot contact for MoonBit."
+    `(moonbit-eglot-server . ,moonbit-lsp-server-command))
+
   (add-hook 'eglot-managed-mode-hook #'moonbit--maybe-enable-semantic-tokens)
   (add-to-list 'eglot-server-programs
-               `((moonbit-ts-mode :language-id "moonbit")
-                 . (moonbit-eglot-server . ,moonbit-lsp-server-command))))
+               '((moonbit-ts-mode :language-id "moonbit")
+                 . moonbit-ts-mode--eglot-contact)))
 
 (provide 'moonbit-ts-mode)
 
