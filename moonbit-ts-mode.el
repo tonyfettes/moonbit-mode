@@ -4,7 +4,7 @@
 ;; URL: https://github.com/moonbit-community/moonbit-ts-mode
 ;; Keywords: languages, tree-sitter
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1"))
+;; Package-Requires: ((emacs "30.1"))
 
 ;;; Commentary:
 ;;
@@ -569,6 +569,170 @@ comments in their embedded MoonBit expressions are real comments."
      "while_expression"))
   "Regexp matching MoonBit expression nodes whose continuations are indented.")
 
+(defconst moonbit-ts-mode--sexp-node-regexp
+  (regexp-opt
+   '("access_expression"
+     "and_expression"
+     "anonymous_lambda_expression"
+     "anonymous_matrix_lambda_expression"
+     "append_expression"
+     "apply_expression"
+     "argument"
+     "arguments"
+     "array_access_expression"
+     "array_expression"
+     "array_pattern"
+     "array_sub_pattern"
+     "arrow_function_expression"
+     "as_expression"
+     "assign_expression"
+     "atomic_expression"
+     "attribute_expression"
+     "binary_expression"
+     "block_expression"
+     "boolean_literal"
+     "break_expression"
+     "byte_escape_literal"
+     "byte_literal"
+     "bytes_literal"
+     "case_clause"
+     "char_literal"
+     "const_definition"
+     "constraint_expression"
+     "constructor_expression"
+     "constructor_parameter"
+     "constructor_pattern"
+     "constructor_pattern_argument"
+     "continue_expression"
+     "defer_expression"
+     "derive_item"
+     "dot_apply_expression"
+     "dot_dot_apply_expression"
+     "double_literal"
+     "else_clause"
+     "enum_constructor"
+     "enum_constructor_payload"
+     "enum_definition"
+     "error_type_definition"
+     "float_literal"
+     "for_expression"
+     "for_in_expression"
+     "forwarded_labelled_argument"
+     "forwarded_optional_argument"
+     "function_alias_definition"
+     "function_definition"
+     "guard_else_expression"
+     "guard_expression"
+     "guard_let_else_expression"
+     "guard_let_expression"
+     "identifier"
+     "if_expression"
+     "impl_declaration"
+     "impl_definition"
+     "import_declaration"
+     "import_item"
+     "integer_literal"
+     "is_expression"
+     "labeled_expression"
+     "labeled_expression_pun"
+     "labelled_argument"
+     "labelled_parameter"
+     "let_expression"
+     "let_mut_expression"
+     "letrec_expression"
+     "lexmatch_case_clause"
+     "lexmatch_expression"
+     "lexmatch_pattern"
+     "lexmatch_test_expression"
+     "list_comprehension_expression"
+     "literal"
+     "loop_expression"
+     "lowercase_identifier"
+     "map_element_expression"
+     "map_element_key"
+     "map_element_pattern"
+     "map_expression"
+     "match_expression"
+     "matrix_case_clause"
+     "method_expression"
+     "named_lambda_expression"
+     "named_matrix_expression"
+     "nobreak_clause"
+     "noraise_clause"
+     "optional_argument"
+     "optional_parameter"
+     "optional_parameter_with_default"
+     "package_apply_statement"
+     "package_argument"
+     "package_array_expression"
+     "package_assignment_statement"
+     "package_expression"
+     "package_import_for_clause"
+     "package_map_entry"
+     "package_map_expression"
+     "package_statement"
+     "package_statement_identifier"
+     "parameter"
+     "parameters"
+     "parenthesized_expression"
+     "pipe_arrow_function_expression"
+     "positional_parameter"
+     "proof_assert_expression"
+     "proof_let_expression"
+     "qualified_identifier"
+     "qualified_type_identifier"
+     "raise_expression"
+     "range_expression"
+     "regex_literal"
+     "regex_match_binding"
+     "regex_match_expression"
+     "regex_match_rhs"
+     "return_expression"
+     "string_literal"
+     "struct_constructor_declaration"
+     "struct_definition"
+     "struct_expression"
+     "struct_field_declaration"
+     "struct_field_expression"
+     "struct_field_pattern"
+     "super_trait_declaration"
+     "test_definition"
+     "trait_alias_definition"
+     "trait_definition"
+     "trait_method_declaration"
+     "trait_method_parameter"
+     "try_catch_clause"
+     "try_catch_expression"
+     "try_else_clause"
+     "try_expression"
+     "tuple_expression"
+     "tuple_pattern"
+     "tuple_struct_definition"
+     "tuple_type"
+     "type_alias_definition"
+     "type_arguments"
+     "type_definition"
+     "type_identifier"
+     "type_parameters"
+     "unary_expression"
+     "unit_expression"
+     "uppercase_identifier"
+     "using_declaration"
+     "value_definition"
+     "where_clause"
+     "where_clause_field"
+     "while_expression"))
+  "Regexp matching MoonBit nodes used for tree-sitter sexp navigation.")
+
+(defconst moonbit-ts-mode--text-node-regexp
+  (regexp-opt
+   '("block_comment"
+     "comment"
+     "multiline_string_literal"
+     "regex_literal"
+     "string_literal"))
+  "Regexp matching MoonBit textual nodes.")
+
 (defconst moonbit-mbtp--indent-definition-parent-regexp
   (regexp-opt
    '("lemma_definition"
@@ -642,6 +806,80 @@ comments in their embedded MoonBit expressions are real comments."
            (let ((next-sibling (treesit-node-next-sibling first-child)))
              (and next-sibling
                   (treesit-node-eq node next-sibling)))))))
+(defconst moonbit-mbtp--sexp-node-regexp
+  (regexp-opt
+   '("attribute_expression"
+     "boolean_literal"
+     "bytes_literal"
+     "char_literal"
+     "double_literal"
+     "float_literal"
+     "identifier"
+     "integer_literal"
+     "lemma_block_expression"
+     "lemma_definition"
+     "lemma_if_expression"
+     "lemma_match_case"
+     "lemma_match_expression"
+     "lemma_nonsequence_expression"
+     "lemma_proof_assert_expression"
+     "lemma_sequence_expression"
+     "lemma_unit_expression"
+     "logic_function_definition"
+     "lowercase_identifier"
+     "mbtp_anonymous_function_expression"
+     "mbtp_apply_expression"
+     "mbtp_apply_expression_no_match"
+     "mbtp_array_access_expression"
+     "mbtp_array_access_expression_no_match"
+     "mbtp_arrow_function_expression"
+     "mbtp_arrow_parameter"
+     "mbtp_atomic_expression"
+     "mbtp_atomic_expression_no_match"
+     "mbtp_binary_expression"
+     "mbtp_binary_expression_no_match"
+     "mbtp_declaration"
+     "mbtp_dot_apply_expression"
+     "mbtp_dot_apply_expression_no_match"
+     "mbtp_expression"
+     "mbtp_expression_no_match"
+     "mbtp_field_expression"
+     "mbtp_field_expression_no_match"
+     "mbtp_identifier_expression"
+     "mbtp_lambda_expression"
+     "mbtp_literal_expression"
+     "mbtp_logic_block_expression"
+     "mbtp_match_case"
+     "mbtp_match_expression"
+     "mbtp_method_expression"
+     "mbtp_parameter"
+     "mbtp_parameter_decl"
+     "mbtp_parameter_list"
+     "mbtp_parenthesized_expression"
+     "mbtp_parenthesized_expression_no_match"
+     "mbtp_pattern_constructor"
+     "mbtp_predicate_body"
+     "mbtp_quantified_term"
+     "mbtp_tuple_expression"
+     "mbtp_tuple_expression_no_match"
+     "mbtp_tuple_type"
+     "mbtp_unary_expression"
+     "mbtp_unary_expression_no_match"
+     "mbtp_where_clause"
+     "mbtp_where_field"
+     "predicate_definition"
+     "string_literal"
+     "uppercase_identifier"))
+  "Regexp matching predicate nodes used for tree-sitter sexp navigation.")
+
+(defconst moonbit-mbtp--text-node-regexp
+  (regexp-opt
+   '("block_comment"
+     "comment"
+     "multiline_string_literal"
+     "regex_literal"
+     "string_literal"))
+  "Regexp matching MoonBit predicate textual nodes.")
 
 (defun moonbit-ts-mode--language (&optional file-name)
   "Return the tree-sitter language for FILE-NAME or the current buffer."
@@ -722,6 +960,20 @@ comments in their embedded MoonBit expressions are real comments."
   "Return tree-sitter indentation rules for LANGUAGE."
   (let ((language (or language (moonbit-ts-mode--language))))
     (list (assq language moonbit-ts-mode--treesit-indent-rules))))
+
+(defconst moonbit-ts-mode--treesit-thing-settings
+  `((moonbit
+     (sexp ,moonbit-ts-mode--sexp-node-regexp)
+     (text ,moonbit-ts-mode--text-node-regexp))
+    (moonbit_mbtp
+     (sexp ,moonbit-mbtp--sexp-node-regexp)
+     (text ,moonbit-mbtp--text-node-regexp)))
+  "Tree-sitter thing definitions for MoonBit navigation.")
+
+(defun moonbit-ts-mode--thing-settings (&optional language)
+  "Return tree-sitter thing settings for LANGUAGE."
+  (let ((language (or language (moonbit-ts-mode--language))))
+    (list (assq language moonbit-ts-mode--treesit-thing-settings))))
 
 (defconst moonbit-ts-mode--definition-type-regexp
   (regexp-opt
@@ -1053,6 +1305,7 @@ comments in their embedded MoonBit expressions are real comments."
   (setq-local treesit-simple-imenu-settings
               `((nil ,moonbit-ts-mode--definition-type-regexp
                      nil moonbit-ts-mode--defun-name)))
+  (setq-local treesit-thing-settings (moonbit-ts-mode--thing-settings))
   (moonbit--setup-project-commands)
   (moonbit--maybe-enable-compilation-errors)
   (moonbit--maybe-enable-eglot))
