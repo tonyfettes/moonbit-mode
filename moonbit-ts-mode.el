@@ -1075,10 +1075,19 @@ comments in their embedded MoonBit expressions are real comments."
     (when proj
       (project-root proj))))
 
+(define-compilation-mode moonbit-compilation-mode "MoonBit Compilation"
+  "Compilation mode for MoonBit commands."
+  (when moonbit-enable-compile-errors
+    (setq-local compilation-error-regexp-alist-alist
+                (cons `(moonbit ,moonbit--compile-error-regexp 1 2 3)
+                      compilation-error-regexp-alist-alist))
+    (setq-local compilation-error-regexp-alist
+                (cons 'moonbit compilation-error-regexp-alist))))
+
 (defun moonbit--compile (command)
   "Run COMMAND with compilation in the project root when available."
   (let ((default-directory (or (moonbit--project-root) default-directory)))
-    (compile command)))
+    (compilation-start command #'moonbit-compilation-mode)))
 
 (defun moonbit-build ()
   "Build the current MoonBit project."
@@ -1278,13 +1287,6 @@ comments in their embedded MoonBit expressions are real comments."
     (when moonbit-semantic-tokens-mode
       (moonbit-semantic-tokens-mode -1))))
 
-(defun moonbit--maybe-enable-compilation-errors ()
-  "Enable MoonBit compilation error parsing if configured."
-  (when moonbit-enable-compile-errors
-    (add-to-list 'compilation-error-regexp-alist-alist
-                 `(moonbit ,moonbit--compile-error-regexp 1 2 3))
-    (add-to-list 'compilation-error-regexp-alist 'moonbit)))
-
 (defun moonbit--setup-common ()
   "Shared setup for MoonBit modes."
   (setq-local moonbit-ts-mode--compiled-syntax-propertize-query
@@ -1311,7 +1313,6 @@ comments in their embedded MoonBit expressions are real comments."
                      nil moonbit-ts-mode--defun-name)))
   (setq-local treesit-thing-settings (moonbit-ts-mode--thing-settings))
   (moonbit--setup-project-commands)
-  (moonbit--maybe-enable-compilation-errors)
   (moonbit--maybe-enable-eglot))
 
 ;;;###autoload
