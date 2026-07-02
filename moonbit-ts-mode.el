@@ -939,7 +939,7 @@ comments in their embedded MoonBit expressions are real comments."
     (nreverse result)))
 
 (defun moonbit--semantic-tokens-apply (result)
-  "Apply semantic token RESULT from the MoonBit language server to the current buffer."
+  "Apply MoonBit semantic token RESULT to the current buffer."
   (let* ((provider (eglot-server-capable :semanticTokensProvider))
          (legend (plist-get provider :legend))
          (types (plist-get legend :tokenTypes))
