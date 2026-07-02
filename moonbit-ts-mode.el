@@ -987,6 +987,8 @@ comments in their embedded MoonBit expressions are real comments."
 (add-to-list 'auto-mode-alist '("\\.mbt\\'" . moonbit-ts-mode))
 ;;;###autoload
 (add-to-list 'auto-mode-alist '("\\.mbti\\'" . moonbit-ts-mode))
+;;;###autoload
+(add-to-list 'auto-mode-alist '("\\.mbtp\\'" . moonbit-ts-mode))
 
 (with-eval-after-load 'eglot
   (defclass moonbit-eglot-server (eglot-lsp-server) ()
