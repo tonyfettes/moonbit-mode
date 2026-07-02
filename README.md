@@ -4,7 +4,7 @@ MoonBit tree-sitter major mode for Emacs with Eglot support.
 
 ## Requirements
 
-- Emacs 29+ for `treesit` support
+- Emacs 30+ for `treesit` support and structural navigation
 - MoonBit tree-sitter grammar
 - MoonBit toolchain
 - `moon` in `PATH` (for LSP via `moon lsp`)
@@ -33,7 +33,11 @@ Install the MoonBit grammar manually with Emacs `treesit`:
 ```elisp
 (add-to-list 'treesit-language-source-alist
              '(moonbit "https://github.com/moonbitlang/tree-sitter-moonbit.git" "main" "src"))
+(add-to-list 'treesit-language-source-alist
+             '(moonbit_mbtp "https://github.com/moonbitlang/tree-sitter-moonbit.git"
+                            "main" "grammars/mbtp/src"))
 (treesit-install-language-grammar 'moonbit)
+(treesit-install-language-grammar 'moonbit_mbtp)
 ```
 
 Tree-sitter highlighting rules are defined directly in `moonbit-ts-mode.el`.
@@ -59,6 +63,10 @@ predicate files.
 
 MoonBit buffers support tree-sitter based defun navigation for commands such as
 `beginning-of-defun`, `end-of-defun`, and `mark-defun`.
+
+Structural navigation commands such as `forward-sexp`, `backward-sexp`,
+`mark-sexp`, and `transpose-sexps` use MoonBit tree-sitter nodes when
+available.
 
 MoonBit definitions are also indexed by Imenu, including functions, types,
 implementations, tests, and predicate definitions.
