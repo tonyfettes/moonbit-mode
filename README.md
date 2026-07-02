@@ -46,11 +46,11 @@ The mode is associated with `.mbt`, `.mbti`, and `.mbtp` files.
 
 ## Indentation
 
-MoonBit buffers use `moonbit-indent-offset` spaces per indentation level. The
+MoonBit buffers use `moonbit-ts-indent-offset` spaces per indentation level. The
 default is 2.
 
 ```elisp
-(setq moonbit-indent-offset 2)
+(setq moonbit-ts-indent-offset 2)
 ```
 
 ## Outline
@@ -77,7 +77,7 @@ If `eglot` is available, it is started automatically in MoonBit buffers using
 `moon lsp`. You can customize the command via:
 
 ```elisp
-(setq moonbit-lsp-server-command '("moon" "lsp"))
+(setq moonbit-ts-lsp-server-command '("moon" "lsp"))
 ```
 
 When the MoonBit language server reports semantic tokens, the mode also
@@ -85,7 +85,7 @@ highlights async and error-raising function calls/declarations. You can disable
 this with:
 
 ```elisp
-(setq moonbit-enable-semantic-tokens nil)
+(setq moonbit-ts-enable-semantic-tokens nil)
 ```
 
 ## Project commands
@@ -97,16 +97,16 @@ The mode sets project defaults:
 
 It also provides interactive commands:
 
-- `M-x moonbit-build`
-- `M-x moonbit-check`
-- `M-x moonbit-test`
+- `M-x moonbit-ts-build`
+- `M-x moonbit-ts-check`
+- `M-x moonbit-ts-test`
 
 ## Optional compile error parsing
 
 Enable MoonBit error parsing in compilation buffers:
 
 ```elisp
-(setq moonbit-enable-compile-errors t)
+(setq moonbit-ts-enable-compile-errors t)
 ```
 
 This makes errors in `moon build`, `moon check`, and `moon test` clickable in
