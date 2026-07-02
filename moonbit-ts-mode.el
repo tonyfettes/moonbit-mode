@@ -164,12 +164,12 @@ comments in their embedded MoonBit expressions are real comments."
 (defconst moonbit--ts-font-lock-rules
   '((interpolator) @default
 
-    (package_identifier) @font-lock-namespace-face
+    (package_identifier) @font-lock-constant-face
 
-    (positional_parameter (lowercase_identifier) @font-lock-parameter-face)
-    (labelled_parameter (label (lowercase_identifier)) @font-lock-parameter-face)
-    (optional_parameter (optional_label (lowercase_identifier)) @font-lock-parameter-face)
-    (optional_parameter_with_default (label (lowercase_identifier)) @font-lock-parameter-face)
+    (positional_parameter (lowercase_identifier) @font-lock-variable-name-face)
+    (labelled_parameter (label (lowercase_identifier)) @font-lock-variable-name-face)
+    (optional_parameter (optional_label (lowercase_identifier)) @font-lock-variable-name-face)
+    (optional_parameter_with_default (label (lowercase_identifier)) @font-lock-variable-name-face)
     ((positional_parameter (lowercase_identifier) @font-lock-builtin-face)
      (:match "^self$" @font-lock-builtin-face))
     ((labelled_parameter (label (lowercase_identifier)) @font-lock-builtin-face)
@@ -200,9 +200,9 @@ comments in their embedded MoonBit expressions are real comments."
     (package_assignment_statement
      name: (package_statement_identifier) @font-lock-variable-name-face)
 
-    (enum_constructor) @font-lock-constructor-face
-    (constructor_expression (uppercase_identifier) @font-lock-constructor-face)
-    (constructor_expression (dot_uppercase_identifier) @font-lock-constructor-face)
+    (enum_constructor) @font-lock-type-face
+    (constructor_expression (uppercase_identifier) @font-lock-type-face)
+    (constructor_expression (dot_uppercase_identifier) @font-lock-type-face)
 
     (const_definition (uppercase_identifier) @font-lock-constant-face)
     ((constructor_expression (uppercase_identifier) @font-lock-constant-face)
@@ -236,10 +236,6 @@ comments in their embedded MoonBit expressions are real comments."
     (struct_field_declaration (lowercase_identifier) @font-lock-property-name-face)
     (struct_expression (labeled_expression (lowercase_identifier) @font-lock-property-name-face))
     (struct_expression (labeled_expression_pun (lowercase_identifier) @font-lock-property-name-face))
-    (struct_expression (labeled_expression (lowercase_identifier) @font-lock-property-name-face))
-    (struct_expression (labeled_expression_pun (lowercase_identifier) @font-lock-property-name-face))
-    (struct_field_expression (labeled_expression (lowercase_identifier) @font-lock-property-name-face))
-    (struct_field_expression (labeled_expression_pun (lowercase_identifier) @font-lock-property-name-face))
     (struct_field_expression (labeled_expression (lowercase_identifier) @font-lock-property-name-face))
     (struct_field_expression (labeled_expression_pun (lowercase_identifier) @font-lock-property-name-face))
     (struct_pattern (struct_field_pattern (labeled_pattern (lowercase_identifier) @font-lock-property-name-face)))
@@ -250,7 +246,7 @@ comments in their embedded MoonBit expressions are real comments."
      (constructor_expression)
      (arguments (argument (labelled_argument (lowercase_identifier) @font-lock-property-name-face "="))))
 
-    (attribute) @font-lock-attribute-face
+    (attribute) @font-lock-preprocessor-face
     ((attribute) @font-lock-preprocessor-face
      (:match "^#coverage\\.skip$" @font-lock-preprocessor-face))
     ((attribute) @font-lock-preprocessor-face
@@ -269,7 +265,6 @@ comments in their embedded MoonBit expressions are real comments."
     (struct_constructor_declaration (lowercase_identifier) @font-lock-function-name-face)
     (function_alias_targets (lowercase_identifier) @font-lock-function-name-face)
     (function_alias_targets (dot_lowercase_identifier) @font-lock-function-name-face)
-    (function_alias_targets (dot_lowercase_identifier) @font-lock-function-name-face)
     (function_alias_target (lowercase_identifier) @font-lock-function-name-face)
     (trait_method_declaration (function_identifier) @font-lock-function-name-face)
     (impl_definition (function_identifier) @font-lock-function-name-face)
@@ -278,16 +273,16 @@ comments in their embedded MoonBit expressions are real comments."
      (function_identifier
       (type_name (qualified_type_identifier)) (lowercase_identifier) @font-lock-function-name-face))
 
-    (loop_label) @font-lock-label-face
-    ("continue" (label) @font-lock-label-face)
-    ("break" (label) @font-lock-label-face)
+    (loop_label) @font-lock-constant-face
+    ("continue" (label) @font-lock-constant-face)
+    ("break" (label) @font-lock-constant-face)
     (package_argument
-     label: (package_statement_identifier) @font-lock-label-face)
+     label: (package_statement_identifier) @font-lock-constant-face)
     (package_argument
-     label: (string_literal) @font-lock-label-face)
+     label: (string_literal) @font-lock-constant-face)
     (package_map_entry
-     key: (string_literal) @font-lock-label-face)
-    (where_clause_field (lowercase_identifier) @font-lock-label-face)
+     key: (string_literal) @font-lock-constant-face)
+    (where_clause_field (lowercase_identifier) @font-lock-constant-face)
 
     ["+" "-" "*" "/" "%"
      "<<" ">>" "|" "&" "^"
@@ -351,7 +346,9 @@ comments in their embedded MoonBit expressions are real comments."
 
     (string_interpolation) @font-lock-string-face
     (string_literal) @font-lock-string-face
+    (bytes_literal) @font-lock-string-face
     (multiline_string_literal) @font-lock-string-face
+    (regex_literal) @font-lock-regexp-face
     (escape_sequence) @font-lock-escape-face
 
     (interpolator
@@ -360,7 +357,10 @@ comments in their embedded MoonBit expressions are real comments."
 
     (integer_literal) @font-lock-number-face
     (float_literal) @font-lock-number-face
+    (double_literal) @font-lock-number-face
     (boolean_literal) @font-lock-constant-face
+    (byte_literal) @font-lock-string-face
+    (byte_escape_literal) @font-lock-string-face
     (char_literal) @font-lock-string-face
 
     (comment) @font-lock-comment-face
@@ -380,18 +380,18 @@ comments in their embedded MoonBit expressions are real comments."
     (logic_function_definition receiver: (uppercase_identifier) @font-lock-type-face)
     (lemma_definition name: (lowercase_identifier) @font-lock-function-name-face)
 
-    (mbtp_parameter name: (lowercase_identifier) @font-lock-parameter-face)
-    (mbtp_where_field name: (lowercase_identifier) @font-lock-label-face)
-    (mbtp_quantified_term binder: (lowercase_identifier) @font-lock-parameter-face)
-    (mbtp_arrow_parameter (lowercase_identifier) @font-lock-parameter-face)
-    (mbtp_parameter_decl (lowercase_identifier) @font-lock-parameter-face)
+    (mbtp_parameter name: (lowercase_identifier) @font-lock-variable-name-face)
+    (mbtp_where_field name: (lowercase_identifier) @font-lock-constant-face)
+    (mbtp_quantified_term binder: (lowercase_identifier) @font-lock-variable-name-face)
+    (mbtp_arrow_parameter (lowercase_identifier) @font-lock-variable-name-face)
+    (mbtp_parameter_decl (lowercase_identifier) @font-lock-variable-name-face)
 
     (mbtp_identifier_expression
      (mbtp_value_path (identifier (lowercase_identifier)) @font-lock-variable-name-face))
     (mbtp_identifier_expression
      (mbtp_value_path (identifier (uppercase_identifier)) @font-lock-constant-face))
-    (mbtp_pattern_constructor (uppercase_identifier) @font-lock-constructor-face)
-    (mbtp_pattern_constructor (dot_uppercase_identifier) @font-lock-constructor-face)
+    (mbtp_pattern_constructor (uppercase_identifier) @font-lock-type-face)
+    (mbtp_pattern_constructor (dot_uppercase_identifier) @font-lock-type-face)
     (mbtp_type_path (identifier) @font-lock-type-face)
 
     ["predicate" "lemma" "where" "proof_assert" "fn"] @font-lock-keyword-face
@@ -406,10 +406,16 @@ comments in their embedded MoonBit expressions are real comments."
     ["," ":" "::" ";"] @font-lock-delimiter-face
 
     (string_literal) @font-lock-string-face
+    (bytes_literal) @font-lock-string-face
+    (multiline_string_literal) @font-lock-string-face
+    (regex_literal) @font-lock-regexp-face
+    (escape_sequence) @font-lock-escape-face
     (integer_literal) @font-lock-number-face
     (float_literal) @font-lock-number-face
     (double_literal) @font-lock-number-face
     (boolean_literal) @font-lock-constant-face
+    (byte_literal) @font-lock-string-face
+    (byte_escape_literal) @font-lock-string-face
     (char_literal) @font-lock-string-face
     (comment) @font-lock-comment-face
     (block_comment) @font-lock-comment-face
@@ -899,7 +905,7 @@ comments in their embedded MoonBit expressions are real comments."
     (_ moonbit--ts-font-lock-rules)))
 
 (defun moonbit-ts-mode--font-lock-settings (&optional language)
-  "Return font-lock settings for `moonbit-ts-mode'."
+  "Return font-lock settings for `moonbit-ts-mode' using LANGUAGE."
   (let* ((language (or language (moonbit-ts-mode--language)))
          (cached-settings (alist-get language moonbit-ts-mode--font-lock-settings)))
     (or cached-settings
