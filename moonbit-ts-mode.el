@@ -723,6 +723,29 @@ comments in their embedded MoonBit expressions are real comments."
   (let ((language (or language (moonbit-ts-mode--language))))
     (list (assq language moonbit-ts-mode--treesit-indent-rules))))
 
+(defconst moonbit-ts-mode--defun-type-regexp
+  (regexp-opt
+   '("const_definition"
+     "enum_definition"
+     "error_type_definition"
+     "function_alias_definition"
+     "function_definition"
+     "impl_declaration"
+     "impl_definition"
+     "lemma_definition"
+     "logic_function_definition"
+     "predicate_definition"
+     "struct_constructor_declaration"
+     "struct_definition"
+     "test_definition"
+     "trait_alias_definition"
+     "trait_definition"
+     "tuple_struct_definition"
+     "type_alias_definition"
+     "type_definition"
+     "value_definition"))
+  "Regexp matching MoonBit tree-sitter defun node types.")
+
 (defun moonbit--treesit-ready-p (&optional language)
   "Return non-nil if tree-sitter is ready for LANGUAGE."
   (and (fboundp 'treesit-available-p)
@@ -965,6 +988,7 @@ comments in their embedded MoonBit expressions are real comments."
               #'moonbit-ts-mode--comment-insert)
   (setq-local indent-tabs-mode nil)
   (setq-local indent-line-function #'treesit-simple-indent)
+  (setq-local treesit-outline-predicate moonbit-ts-mode--defun-type-regexp)
   (moonbit--setup-project-commands)
   (moonbit--maybe-enable-compilation-errors)
   (moonbit--maybe-enable-eglot))

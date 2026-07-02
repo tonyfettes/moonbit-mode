@@ -49,6 +49,12 @@ default is 2.
 (setq moonbit-indent-offset 2)
 ```
 
+## Outline
+
+MoonBit buffers provide `outline-minor-mode` headings for top-level
+definitions such as functions, tests, types, traits, implementations, and
+predicate files.
+
 ## LSP (Eglot)
 
 If `eglot` is available, it is started automatically in MoonBit buffers using
