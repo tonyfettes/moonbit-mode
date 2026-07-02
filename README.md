@@ -1,17 +1,18 @@
-# moonbit-mode
+# moonbit-ts-mode
 
-MoonBit major mode for Emacs with tree-sitter highlighting and Eglot support.
+MoonBit tree-sitter major mode for Emacs with Eglot support.
 
 ## Requirements
 
 - Emacs 29+ for `treesit` support
+- MoonBit tree-sitter grammar
 - MoonBit toolchain
 - `moon` in `PATH` (for LSP via `moon lsp`)
 
 ## Installation
 ```elisp
-(add-to-list 'load-path "/path/to/moonbit-mode")
-(require 'moonbit-mode)
+(add-to-list 'load-path "/path/to/moonbit-ts-mode")
+(require 'moonbit-ts-mode)
 ```
 
 ## Install from GitHub (package-vc-install)
@@ -21,8 +22,8 @@ version control.
 
 ```elisp
 (require 'package)
-(package-vc-install "https://github.com/moonbit-community/moonbit-mode")
-(require 'moonbit-mode)
+(package-vc-install "https://github.com/moonbit-community/moonbit-ts-mode")
+(require 'moonbit-ts-mode)
 ```
 
 ## Tree-sitter grammar
@@ -35,7 +36,7 @@ Install the MoonBit grammar manually with Emacs `treesit`:
 (treesit-install-language-grammar 'moonbit)
 ```
 
-Tree-sitter highlighting rules are defined directly in `moonbit-mode.el`.
+Tree-sitter highlighting rules are defined directly in `moonbit-ts-mode.el`.
 
 ## LSP (Eglot)
 
