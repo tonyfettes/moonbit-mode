@@ -18,6 +18,7 @@
 (require 'eglot)
 (require 'eieio)
 (require 'project)
+(require 'seq)
 (require 'treesit)
 
 (defgroup moonbit-ts nil
@@ -989,6 +990,111 @@ comments in their embedded MoonBit expressions are real comments."
   (let ((language (or language (moonbit-ts-mode--language))))
     (list (assq language moonbit-ts-mode--treesit-thing-settings))))
 
+(defconst moonbit-ts-mode--treesit-fold-rules
+  '((block_comment . treesit-fold-range-c-like-comment)
+    (comment . treesit-fold-range-c-like-comment)
+    (block_expression . treesit-fold-range-seq)
+    (enum_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (error_type_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (for_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (for_in_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (function_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (if_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (impl_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (lexmatch_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (loop_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (match_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (struct_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (test_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (trait_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (try_catch_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (try_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (tuple_struct_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (type_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (while_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (lemma_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (lemma_block_expression . treesit-fold-range-seq)
+    (lemma_if_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (lemma_match_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (logic_function_definition . moonbit-ts-mode--treesit-fold-range-body)
+    (mbtp_logic_block_expression . treesit-fold-range-seq)
+    (mbtp_match_expression . moonbit-ts-mode--treesit-fold-range-body)
+    (mbtp_predicate_body . treesit-fold-range-seq)
+    (predicate_definition . moonbit-ts-mode--treesit-fold-range-body))
+  "Optional `treesit-fold' fold rules for MoonBit buffers.")
+
+(declare-function treesit-fold-range-c-like-comment "treesit-fold")
+(declare-function treesit-fold-range-markers "treesit-fold")
+(declare-function treesit-fold-range-seq "treesit-fold")
+(defvar treesit-fold-range-alist)
+
+(defun moonbit-ts-mode--treesit-fold--add-offset (range offset)
+  "Add `treesit-fold' OFFSET to RANGE."
+  (pcase-let ((`(,beg . ,end) range)
+              (`(,beg-offset . ,end-offset) (or offset '(0 . 0))))
+    (cons (+ beg beg-offset) (+ end end-offset))))
+
+(defconst moonbit-ts-mode--treesit-fold-body-node-types
+  '("block_expression"
+    "else_clause"
+    "guard_else_expression"
+    "lemma_block_expression"
+    "mbtp_logic_block_expression"
+    "mbtp_predicate_body"
+    "nobreak_clause"
+    "noraise_clause"
+    "try_catch_clause"
+    "try_else_clause")
+  "MoonBit direct child node types that delimit foldable bodies.")
+
+(defun moonbit-ts-mode--treesit-fold--own-delimited-range (node)
+  "Return NODE's directly delimited range without an offset."
+  (or (treesit-fold-range-markers node '(0 . 0) "{" "}")
+      (treesit-fold-range-markers node '(0 . 0) "(" ")")))
+
+(defun moonbit-ts-mode--treesit-fold--body-child-range (node)
+  "Return NODE's delimited range, including nested body clauses."
+  (let ((range (moonbit-ts-mode--treesit-fold--own-delimited-range node)))
+    (dolist (child (treesit-node-children node t) range)
+      (when (member (treesit-node-type child)
+                    moonbit-ts-mode--treesit-fold-body-node-types)
+        (let ((child-range
+               (moonbit-ts-mode--treesit-fold--body-child-range child)))
+          (when child-range
+            (setq range
+                  (if range
+                      (cons (min (car range) (car child-range))
+                            (max (cdr range) (cdr child-range)))
+                    child-range))))))))
+
+(defun moonbit-ts-mode--treesit-fold-range-body (node offset)
+  "Return a `treesit-fold' body range for MoonBit NODE.
+
+OFFSET is added to the final range."
+  (when node
+    (let* ((own-range
+            (moonbit-ts-mode--treesit-fold--own-delimited-range node))
+           (body-ranges
+            (delq nil
+                  (mapcar
+                   (lambda (child)
+                     (when (member
+                            (treesit-node-type child)
+                            moonbit-ts-mode--treesit-fold-body-node-types)
+                       (moonbit-ts-mode--treesit-fold--body-child-range child)))
+                   (treesit-node-children node t))))
+           (range (or own-range
+                      (when body-ranges
+                        (cons (caar body-ranges)
+                              (cdr (car (last body-ranges))))))))
+      (when (and range (< (car range) (cdr range)))
+        (moonbit-ts-mode--treesit-fold--add-offset range offset)))))
+
+(defun moonbit-ts-mode--setup-treesit-fold ()
+  "Register MoonBit rules in `treesit-fold-range-alist'."
+  (setf (alist-get 'moonbit-ts-mode treesit-fold-range-alist)
+        moonbit-ts-mode--treesit-fold-rules))
+
 (defconst moonbit-ts-mode--definition-type-regexp
   (regexp-opt
    '("const_definition"
@@ -1379,6 +1485,9 @@ comments in their embedded MoonBit expressions are real comments."
 (add-to-list 'eglot-server-programs
              '((moonbit-ts-mode :language-id "moonbit")
                . moonbit-ts-mode--eglot-contact))
+
+(with-eval-after-load 'treesit-fold
+  (moonbit-ts-mode--setup-treesit-fold))
 
 (provide 'moonbit-ts-mode)
 
