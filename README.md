@@ -57,7 +57,7 @@ default is 2.
 
 MoonBit buffers provide `outline-minor-mode` headings for top-level
 definitions such as functions, tests, types, traits, implementations, and
-predicate files.
+predicate definitions.
 
 ## Navigation
 
@@ -70,6 +70,12 @@ available.
 
 MoonBit definitions are also indexed by Imenu, including functions, types,
 implementations, tests, and predicate definitions.
+
+## Folding
+
+If the optional `treesit-fold` package is installed, MoonBit fold rules are
+registered when `treesit-fold` loads, covering definitions and common block
+expressions such as `if`, `match`, `loop`, `for`, and `try`.
 
 ## LSP (Eglot)
 
