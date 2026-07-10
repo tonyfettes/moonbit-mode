@@ -99,7 +99,10 @@ this with:
 The mode sets project defaults:
 
 - Build: `moon build`
+- Check: `moon check`
 - Test: `moon test`
+
+`compile-command` defaults to the build command in MoonBit buffers.
 
 It also provides interactive commands:
 
@@ -107,12 +110,13 @@ It also provides interactive commands:
 - `M-x moonbit-ts-check`
 - `M-x moonbit-ts-test`
 
-## Optional compile error parsing
+## Compile error parsing
 
-Enable MoonBit error parsing in compilation buffers:
+MoonBit error parsing is enabled by default for the project commands above. To
+disable it:
 
 ```elisp
-(setq moonbit-ts-enable-compile-errors t)
+(setq moonbit-ts-enable-compile-errors nil)
 ```
 
 This makes errors in `moon build`, `moon check`, and `moon test` clickable in

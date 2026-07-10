@@ -1,10 +1,25 @@
 ;;; moonbit-ts-mode.el --- MoonBit tree-sitter major mode -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2024-2026 MoonBit Contributors
+
 ;; Author: MoonBit Contributors
+;; Assisted-by: Codex:GPT-5
 ;; URL: https://github.com/moonbit-community/moonbit-ts-mode
 ;; Keywords: languages, tree-sitter
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "30.1"))
+
+;; Licensed under the Apache License, Version 2.0 (the "License");
+;; you may not use this file except in compliance with the License.
+;; You may obtain a copy of the License at
+;;
+;;     https://www.apache.org/licenses/LICENSE-2.0
+;;
+;; Unless required by applicable law or agreed to in writing, software
+;; distributed under the License is distributed on an "AS IS" BASIS,
+;; WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+;; See the License for the specific language governing permissions and
+;; limitations under the License.
 
 ;;; Commentary:
 ;;
@@ -1550,7 +1565,7 @@ OFFSET is added to the final range."
              '((moonbit-ts-mode :language-id "moonbit")
                . moonbit-ts-mode--eglot-contact))
 
-(with-eval-after-load 'treesit-fold
+(when (require 'treesit-fold nil t)
   (moonbit-ts-mode--setup-treesit-fold))
 
 (provide 'moonbit-ts-mode)
