@@ -17,6 +17,7 @@
 (require 'cl-lib)
 (require 'eglot)
 (require 'eieio)
+(require 'jsonrpc)
 (require 'project)
 (require 'seq)
 (require 'treesit)
@@ -1227,9 +1228,12 @@ OFFSET is added to the final range."
   (when (fboundp 'eglot-ensure)
     (eglot-ensure)))
 
-(defvar-local moonbit-ts--semantic-token-overlays nil)
-(defvar-local moonbit-ts--semantic-tokens-refresh-timer nil)
-(defvar-local moonbit-ts--semantic-tokens-request-id 0)
+(defvar-local moonbit-ts--semantic-token-overlays nil
+  "Semantic token overlays owned by the current MoonBit buffer.")
+(defvar-local moonbit-ts--semantic-tokens-refresh-timer nil
+  "Pending semantic token refresh timer for the current buffer.")
+(defvar-local moonbit-ts--semantic-tokens-request-token nil
+  "Opaque identity of the latest semantic token request.")
 
 (define-minor-mode moonbit-ts-semantic-tokens-mode
   "Highlight semantic tokens reported by the MoonBit language server."
@@ -1239,18 +1243,30 @@ OFFSET is added to the final range."
       (progn
         (add-hook 'after-change-functions
                   #'moonbit-ts--semantic-tokens-after-change nil t)
-        (add-hook 'after-save-hook #'moonbit-ts-semantic-tokens-refresh nil t)
+        (add-hook 'after-save-hook
+                  #'moonbit-ts--semantic-tokens-after-save 90 t)
         (moonbit-ts--semantic-tokens-schedule-refresh 0))
     (remove-hook 'after-change-functions
                  #'moonbit-ts--semantic-tokens-after-change t)
-    (remove-hook 'after-save-hook #'moonbit-ts-semantic-tokens-refresh t)
+    (remove-hook 'after-save-hook #'moonbit-ts--semantic-tokens-after-save t)
+    (setq moonbit-ts--semantic-tokens-request-token (cons nil nil))
     (moonbit-ts--semantic-tokens-cancel-refresh)
     (moonbit-ts--semantic-tokens-clear)))
 
+(defun moonbit-ts--semantic-tokens-set-overlays (overlays)
+  "Replace current MoonBit semantic token overlays with OVERLAYS."
+  (mapc #'delete-overlay moonbit-ts--semantic-token-overlays)
+  (save-restriction
+    (widen)
+    (dolist (overlay (overlays-in (point-min) (point-max)))
+      (when (and (overlay-get overlay 'moonbit-ts-semantic-token)
+                 (not (memq overlay overlays)))
+        (delete-overlay overlay))))
+  (setq moonbit-ts--semantic-token-overlays overlays))
+
 (defun moonbit-ts--semantic-tokens-clear ()
   "Clear MoonBit semantic token overlays in the current buffer."
-  (mapc #'delete-overlay moonbit-ts--semantic-token-overlays)
-  (setq moonbit-ts--semantic-token-overlays nil))
+  (moonbit-ts--semantic-tokens-set-overlays nil))
 
 (defun moonbit-ts--semantic-tokens-cancel-refresh ()
   "Cancel any pending MoonBit semantic token refresh."
@@ -1275,6 +1291,10 @@ OFFSET is added to the final range."
   "Schedule a MoonBit semantic token refresh after a buffer change."
   (moonbit-ts--semantic-tokens-schedule-refresh))
 
+(defun moonbit-ts--semantic-tokens-after-save ()
+  "Schedule a MoonBit semantic token refresh after saving."
+  (moonbit-ts--semantic-tokens-schedule-refresh 0))
+
 (defun moonbit-ts--semantic-tokens-seq-elt (seq index)
   "Return element INDEX from JSON array SEQ."
   (if (vectorp seq)
@@ -1283,21 +1303,17 @@ OFFSET is added to the final range."
 
 (defun moonbit-ts--semantic-tokens-seq-length (seq)
   "Return the length of JSON array SEQ."
-  (if (vectorp seq)
-      (length seq)
-    (length seq)))
+  (length seq))
 
 (defun moonbit-ts--semantic-tokens-token-face (token-type token-modifiers)
   "Return the face list for TOKEN-TYPE and TOKEN-MODIFIERS."
-  (let ((faces (pcase token-type
-                 ("function_call" '(font-lock-function-call-face))
-                 ("function_decl" '(font-lock-function-name-face))
-                 (_ nil))))
+  (let (faces)
     (when (member "async" token-modifiers)
       (push 'moonbit-ts-semantic-token-async-face faces))
     (when (member "error" token-modifiers)
       (push 'moonbit-ts-semantic-token-error-face faces))
-    (nreverse faces)))
+    (and (member token-type '("function_call" "function_decl"))
+         (nreverse faces))))
 
 (defun moonbit-ts--semantic-tokens-position-to-point (line character)
   "Return point for zero-based LINE and LSP CHARACTER."
@@ -1317,27 +1333,49 @@ OFFSET is added to the final range."
         (push (moonbit-ts--semantic-tokens-seq-elt modifiers index) result)))
     (nreverse result)))
 
-(defun moonbit-ts--semantic-tokens-apply (result)
-  "Apply MoonBit semantic token RESULT to the current buffer."
+(defun moonbit-ts--semantic-tokens-provider ()
+  "Return the current server's full semantic token provider, if any."
   (let* ((provider (eglot-server-capable :semanticTokensProvider))
-         (legend (plist-get provider :legend))
-         (types (plist-get legend :tokenTypes))
-         (data (plist-get result :data))
-         (line 0)
-         (character 0)
-         overlays)
-    (when (and legend data)
+         (full (and (listp provider) (plist-member provider :full))))
+    (when (and full
+               (not (eq (cadr full) :json-false))
+               (plist-get provider :legend))
+      provider)))
+
+(defun moonbit-ts--semantic-tokens-apply (result legend)
+  "Apply semantic token RESULT decoded with LEGEND to the current buffer."
+  (if (null result)
+      (moonbit-ts--semantic-tokens-clear)
+    (let* ((types (plist-get legend :tokenTypes))
+           (data (plist-get result :data))
+           (data-length (moonbit-ts--semantic-tokens-seq-length data))
+           (type-count (moonbit-ts--semantic-tokens-seq-length types))
+           (line 0)
+           (character 0)
+           specs)
+      (unless (and (or (listp data) (vectorp data))
+                   (or (listp types) (vectorp types)))
+        (error "Invalid MoonBit semantic token response"))
+      (unless (zerop (% data-length 5))
+        (error "Invalid MoonBit semantic token data length: %d" data-length))
       (save-excursion
         (save-restriction
           (widen)
           (cl-loop
-           for index from 0 below (moonbit-ts--semantic-tokens-seq-length data) by 5
+           for index from 0 below data-length by 5
            for delta-line = (moonbit-ts--semantic-tokens-seq-elt data index)
            for delta-start = (moonbit-ts--semantic-tokens-seq-elt data (+ index 1))
            for length = (moonbit-ts--semantic-tokens-seq-elt data (+ index 2))
            for token-type-index = (moonbit-ts--semantic-tokens-seq-elt data (+ index 3))
            for token-modifier-mask = (moonbit-ts--semantic-tokens-seq-elt data (+ index 4))
            do
+           (unless (and (natnump delta-line)
+                        (natnump delta-start)
+                        (natnump length)
+                        (natnump token-type-index)
+                        (< token-type-index type-count)
+                        (natnump token-modifier-mask))
+             (error "Invalid MoonBit semantic token at data index %d" index))
            (setq line (+ line delta-line))
            (setq character (if (zerop delta-line)
                                (+ character delta-start)
@@ -1351,17 +1389,37 @@ OFFSET is added to the final range."
                     (face (moonbit-ts--semantic-tokens-token-face
                            token-type token-modifiers)))
                (when face
-                 (let* ((start (moonbit-ts--semantic-tokens-position-to-point
-                                line character))
-                        (end (moonbit-ts--semantic-tokens-end-point
-                              line character length)))
+                 (let ((start (moonbit-ts--semantic-tokens-position-to-point
+                               line character))
+                       (end (moonbit-ts--semantic-tokens-end-point
+                             line character length)))
                    (when (< start end)
-                     (let ((overlay (make-overlay start end nil t nil)))
-                       (overlay-put overlay 'face face)
-                       (overlay-put overlay 'priority 20)
-                       (push overlay overlays))))))))))
-      (moonbit-ts--semantic-tokens-clear)
-      (setq moonbit-ts--semantic-token-overlays (nreverse overlays)))))
+                     (push (list start end face) specs)))))))))
+      (let (overlays complete)
+        (unwind-protect
+            (progn
+              (dolist (spec (nreverse specs))
+                (pcase-let ((`(,start ,end ,face) spec))
+                  (let ((overlay (make-overlay start end nil t nil)))
+                    (push overlay overlays)
+                    (overlay-put overlay 'face face)
+                    (overlay-put overlay 'priority 20)
+                    (overlay-put overlay 'moonbit-ts-semantic-token t))))
+              (setq complete t))
+          (unless complete
+            (mapc #'delete-overlay overlays)))
+        (moonbit-ts--semantic-tokens-set-overlays (nreverse overlays))))))
+
+(defun moonbit-ts--semantic-tokens-apply-safely (result legend)
+  "Apply semantic token RESULT with LEGEND, warning on invalid data."
+  (condition-case error-data
+      (moonbit-ts--semantic-tokens-apply result legend)
+    (error
+     (display-warning
+      'moonbit-ts
+      (format "Ignoring invalid semantic tokens: %s"
+              (error-message-string error-data))
+      :warning))))
 
 (defun moonbit-ts-semantic-tokens-refresh ()
   "Refresh MoonBit semantic token highlighting."
@@ -1369,12 +1427,14 @@ OFFSET is added to the final range."
   (when (and moonbit-ts-semantic-tokens-mode
              (featurep 'eglot)
              (fboundp 'eglot-current-server)
-             (eglot-current-server)
-             (eglot-server-capable :semanticTokensProvider))
-    (let ((server (eglot-current-server))
-          (buffer (current-buffer))
-          (tick (buffer-chars-modified-tick))
-          (request-id (cl-incf moonbit-ts--semantic-tokens-request-id)))
+             (eglot-current-server))
+    (when-let* ((server (eglot-current-server))
+                (provider (moonbit-ts--semantic-tokens-provider))
+                (legend (copy-tree (plist-get provider :legend)))
+                (buffer (current-buffer))
+                (tick (buffer-chars-modified-tick))
+                (request-token (cons nil nil)))
+      (setq moonbit-ts--semantic-tokens-request-token request-token)
       (eglot--signal-textDocument/didChange)
       (jsonrpc-async-request
        server :textDocument/semanticTokens/full
@@ -1385,9 +1445,12 @@ OFFSET is added to the final range."
          (when (buffer-live-p buffer)
            (with-current-buffer buffer
              (when (and moonbit-ts-semantic-tokens-mode
-                        (= request-id moonbit-ts--semantic-tokens-request-id))
+                        (eq request-token
+                            moonbit-ts--semantic-tokens-request-token)
+                        (eglot-managed-p)
+                        (eq server (eglot-current-server)))
                (if (= tick (buffer-chars-modified-tick))
-                   (moonbit-ts--semantic-tokens-apply result)
+                   (moonbit-ts--semantic-tokens-apply-safely result legend)
                  (moonbit-ts--semantic-tokens-schedule-refresh 0))))))))))
 
 (defun moonbit-ts--maybe-enable-semantic-tokens ()
@@ -1396,7 +1459,7 @@ OFFSET is added to the final range."
            (derived-mode-p 'moonbit-ts-mode)
            (fboundp 'eglot-managed-p)
            (eglot-managed-p)
-           (eglot-server-capable :semanticTokensProvider))
+           (moonbit-ts--semantic-tokens-provider))
       (moonbit-ts-semantic-tokens-mode 1)
     (when moonbit-ts-semantic-tokens-mode
       (moonbit-ts-semantic-tokens-mode -1))))
@@ -1453,29 +1516,30 @@ OFFSET is added to the final range."
 (defclass moonbit-ts-eglot-server (eglot-lsp-server) ()
   "Eglot server class for MoonBit.")
 
-(cl-defmethod eglot-client-capabilities ((_server moonbit-ts-eglot-server))
-  (let* ((capabilities (cl-call-next-method))
-         (workspace (plist-get capabilities :workspace))
+(defun moonbit-ts--add-semantic-token-capabilities (capabilities)
+  "Add MoonBit semantic token support to CAPABILITIES."
+  (let* ((workspace (plist-get capabilities :workspace))
          (text-document (plist-get capabilities :textDocument)))
-    (setf (plist-get workspace :semanticTokens) '(:refreshSupport t))
-    (setf (plist-get text-document :semanticTokens)
-          '(:dynamicRegistration :json-false
-            :requests (:range :json-false :full (:delta :json-false))
-            :tokenTypes ["namespace" "type" "class" "enum" "interface"
-                         "struct" "typeParameter" "parameter" "variable"
-                         "property" "enumMember" "event" "function"
-                         "method" "macro" "keyword" "modifier" "comment"
-                         "string" "number" "regexp" "operator" "decorator"
-                         "function_call" "function_decl"]
-            :tokenModifiers ["declaration" "definition" "readonly" "static"
-                             "deprecated" "abstract" "async" "modification"
-                             "documentation" "defaultLibrary" "error"]
-            :formats ["relative"]
-            :overlappingTokenSupport :json-false
-            :multilineTokenSupport :json-false
-            :serverCancelSupport t
-            :augmentsSyntaxTokens t))
+    (setf (plist-get capabilities :workspace)
+          (plist-put workspace :semanticTokens
+                     '(:refreshSupport :json-false)))
+    (setf (plist-get capabilities :textDocument)
+          (plist-put
+           text-document :semanticTokens
+           '(:dynamicRegistration :json-false
+             :requests (:range :json-false :full (:delta :json-false))
+             :tokenTypes ["function_call" "function_decl"]
+             :tokenModifiers ["async" "error"]
+             :formats ["relative"]
+             :overlappingTokenSupport :json-false
+             :multilineTokenSupport :json-false
+             :serverCancelSupport :json-false
+             :augmentsSyntaxTokens t)))
     capabilities))
+
+(cl-defmethod eglot-client-capabilities ((_server moonbit-ts-eglot-server))
+  "Add MoonBit semantic token support to Eglot client capabilities."
+  (moonbit-ts--add-semantic-token-capabilities (cl-call-next-method)))
 
 (defun moonbit-ts-mode--eglot-contact (_interactive _project)
   "Return the Eglot contact for MoonBit."
