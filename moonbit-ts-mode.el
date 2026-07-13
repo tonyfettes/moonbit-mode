@@ -68,14 +68,6 @@
   :group 'moonbit-ts)
 
 (defvar eglot-server-programs)
-(declare-function eglot--lsp-position-to-point "eglot")
-(declare-function eglot--signal-textDocument/didChange "eglot")
-(declare-function eglot--TextDocumentIdentifier "eglot")
-(declare-function eglot-current-server "eglot")
-(declare-function eglot-managed-p "eglot")
-(declare-function eglot-server-capable "eglot")
-(declare-function jsonrpc-async-request "jsonrpc")
-(declare-function moonbit-ts-eglot-server--eieio-childp "moonbit-ts-mode")
 
 (defcustom moonbit-ts-enable-compile-errors t
   "Whether to enable MoonBit compile error parsing in compilation buffers."
@@ -1039,9 +1031,9 @@ comments in their embedded MoonBit expressions are real comments."
     (predicate_definition . moonbit-ts-mode--treesit-fold-range-body))
   "Optional `treesit-fold' fold rules for MoonBit buffers.")
 
-(declare-function treesit-fold-range-c-like-comment "treesit-fold")
-(declare-function treesit-fold-range-markers "treesit-fold")
-(declare-function treesit-fold-range-seq "treesit-fold")
+(declare-function treesit-fold-range-c-like-comment "ext:treesit-fold")
+(declare-function treesit-fold-range-markers "ext:treesit-fold")
+(declare-function treesit-fold-range-seq "ext:treesit-fold")
 (defvar treesit-fold-range-alist)
 
 (defun moonbit-ts-mode--treesit-fold--add-offset (range offset)
