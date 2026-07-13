@@ -1505,6 +1505,8 @@ OFFSET is added to the final range."
                      nil moonbit-ts-mode--defun-name)))
   (setq-local treesit-thing-settings (moonbit-ts-mode--thing-settings))
   (moonbit-ts--setup-project-commands)
+  (add-hook 'eglot-managed-mode-hook
+            #'moonbit-ts--maybe-enable-semantic-tokens nil t)
   (moonbit-ts--maybe-enable-eglot))
 
 ;;;###autoload
@@ -1560,7 +1562,6 @@ OFFSET is added to the final range."
   "Return the Eglot contact for MoonBit."
   `(moonbit-ts-eglot-server . ,moonbit-ts-lsp-server-command))
 
-(add-hook 'eglot-managed-mode-hook #'moonbit-ts--maybe-enable-semantic-tokens)
 (add-to-list 'eglot-server-programs
              '((moonbit-ts-mode :language-id "moonbit")
                . moonbit-ts-mode--eglot-contact))

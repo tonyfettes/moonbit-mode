@@ -43,6 +43,23 @@
   (search-forward text)
   (get-text-property (match-beginning 0) 'face))
 
+(ert-deftest moonbit-ts-test-eglot-hook-is-buffer-local ()
+  (should-not
+   (memq #'moonbit-ts--maybe-enable-semantic-tokens
+         (default-value 'eglot-managed-mode-hook)))
+  (with-temp-buffer
+    (let (hook-installed-before-eglot)
+      (cl-letf (((symbol-function 'treesit-query-compile) #'ignore)
+                ((symbol-function 'eglot-ensure)
+                 (lambda ()
+                   (setq hook-installed-before-eglot
+                         (and
+                          (local-variable-p 'eglot-managed-mode-hook)
+                          (memq #'moonbit-ts--maybe-enable-semantic-tokens
+                                eglot-managed-mode-hook))))))
+        (moonbit-ts--setup-common))
+      (should hook-installed-before-eglot))))
+
 (ert-deftest moonbit-ts-test-semantic-token-faces-are-independent ()
   (let* ((async-face
           (moonbit-ts--semantic-tokens-token-face
