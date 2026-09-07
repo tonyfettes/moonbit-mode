@@ -7,7 +7,7 @@
 ;; URL: https://github.com/moonbit-community/moonbit-ts-mode
 ;; Keywords: languages, tree-sitter
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "30.1"))
+;; Package-Requires: ((emacs "31.1"))
 
 ;; Licensed under the Apache License, Version 2.0 (the "License");
 ;; you may not use this file except in compliance with the License.
@@ -29,11 +29,7 @@
 ;;; Code:
 
 (require 'compile)
-(require 'cl-lib)
 (require 'eglot)
-(require 'eieio)
-(require 'jsonrpc)
-(require 'project)
 (require 'seq)
 (require 'treesit)
 
@@ -41,47 +37,10 @@
   "MoonBit language support."
   :group 'languages)
 
-(defcustom moonbit-ts-lsp-server-command '("moon" "lsp")
-  "Command to start the MoonBit language server."
-  :type '(repeat string)
-  :group 'moonbit-ts)
-
-(defcustom moonbit-ts-project-build-command "moon build"
-  "Command used for building MoonBit projects."
-  :type 'string
-  :group 'moonbit-ts)
-
-(defcustom moonbit-ts-project-check-command "moon check"
-  "Command used for type checking MoonBit projects."
-  :type 'string
-  :group 'moonbit-ts)
-
-(defcustom moonbit-ts-project-test-command "moon test"
-  "Command used for testing MoonBit projects."
-  :type 'string
-  :group 'moonbit-ts)
-
 (defcustom moonbit-ts-indent-offset 2
   "Number of spaces to use for each MoonBit indentation level."
   :type 'natnum
   :safe 'natnump
-  :group 'moonbit-ts)
-
-(defvar eglot-server-programs)
-
-(defcustom moonbit-ts-enable-compile-errors t
-  "Whether to enable MoonBit compile error parsing in compilation buffers."
-  :type 'boolean
-  :group 'moonbit-ts)
-
-(defcustom moonbit-ts-enable-semantic-tokens t
-  "Whether to enable LSP semantic token highlighting when available."
-  :type 'boolean
-  :group 'moonbit-ts)
-
-(defcustom moonbit-ts-semantic-tokens-refresh-delay 0.2
-  "Idle delay before refreshing MoonBit semantic token highlighting."
-  :type 'number
   :group 'moonbit-ts)
 
 (defvar moonbit-ts-mode--syntax-table
@@ -157,19 +116,13 @@ comments in their embedded MoonBit expressions are real comments."
     (let ((comment-insert-comment-function nil))
       (comment-indent))))
 
-(defface moonbit-ts-semantic-token-async-face
-  '((t (:slant italic)))
-  "Face used for async MoonBit semantic tokens."
-  :group 'moonbit-ts)
-
-(defface moonbit-ts-semantic-token-error-face
-  '((t (:underline t)))
-  "Face used for error-raising MoonBit semantic tokens."
-  :group 'moonbit-ts)
-
 (defconst moonbit-ts--compile-error-regexp
   "\\[\\s-*\\([^:\n]+\\):\\([0-9]+\\):\\([0-9]+\\)\\s-*\\]"
   "Regexp matching MoonBit compiler errors.")
+
+(add-to-list 'compilation-error-regexp-alist-alist
+             `(moonbit-ts ,moonbit-ts--compile-error-regexp 1 2 3))
+(add-to-list 'compilation-error-regexp-alist 'moonbit-ts)
 
 (defconst moonbit-ts--ts-font-lock-rules
   '((interpolator) @default
@@ -431,8 +384,6 @@ comments in their embedded MoonBit expressions are real comments."
     (block_comment) @font-lock-comment-face
     (ERROR) @font-lock-warning-face)
   "Tree-sitter font-lock rules for MoonBit predicate files.")
-
-(defvar moonbit-ts-mode--font-lock-settings nil)
 
 (defconst moonbit-ts-mode--indent-definition-parent-regexp
   (regexp-opt
@@ -906,30 +857,6 @@ comments in their embedded MoonBit expressions are real comments."
     ("mbtp" 'moonbit_mbtp)
     (_ 'moonbit)))
 
-(defun moonbit-ts-mode--font-lock-rules (&optional language)
-  "Return tree-sitter font-lock rules for LANGUAGE."
-  (pcase (or language (moonbit-ts-mode--language))
-    ('moonbit_mbtp
-     (if (boundp 'moonbit-ts-mbtp--ts-font-lock-rules)
-         moonbit-ts-mbtp--ts-font-lock-rules
-       moonbit-ts--ts-font-lock-rules))
-    (_ moonbit-ts--ts-font-lock-rules)))
-
-(defun moonbit-ts-mode--font-lock-settings (&optional language)
-  "Return font-lock settings for `moonbit-ts-mode' using LANGUAGE."
-  (let* ((language (or language (moonbit-ts-mode--language)))
-         (cached-settings (alist-get language moonbit-ts-mode--font-lock-settings)))
-    (or cached-settings
-        (setf (alist-get language moonbit-ts-mode--font-lock-settings)
-              (treesit-font-lock-rules
-               :language language
-               :feature 'default
-               (moonbit-ts-mode--font-lock-rules language)
-               :language language
-               :feature 'default
-               :override t
-               moonbit-ts-mode--contextual-keyword-font-lock-rules)))))
-
 (defconst moonbit-ts-mode--treesit-indent-rules
   `((moonbit
      ((parent-is "source_file") column-0 0)
@@ -979,129 +906,63 @@ comments in their embedded MoonBit expressions are real comments."
       parent-bol moonbit-ts-indent-offset)))
   "Tree-sitter indentation rules for MoonBit buffers.")
 
-(defun moonbit-ts-mode--indent-rules (&optional language)
-  "Return tree-sitter indentation rules for LANGUAGE."
-  (let ((language (or language (moonbit-ts-mode--language))))
-    (list (assq language moonbit-ts-mode--treesit-indent-rules))))
+(defconst moonbit-ts-mode--list-node-regexp
+  (concat
+   "\\`"
+   (regexp-opt
+    '("block_expression"
+      "else_clause"
+      "enum_definition"
+      "error_type_definition"
+      "for_expression"
+      "for_in_expression"
+      "function_definition"
+      "guard_else_expression"
+      "if_expression"
+      "impl_definition"
+      "lemma_block_expression"
+      "lemma_definition"
+      "lemma_if_expression"
+      "lemma_match_expression"
+      "lexmatch_expression"
+      "logic_function_definition"
+      "loop_expression"
+      "match_expression"
+      "mbtp_logic_block_expression"
+      "mbtp_match_expression"
+      "mbtp_predicate_body"
+      "nobreak_clause"
+      "noraise_clause"
+      "predicate_definition"
+      "struct_definition"
+      "test_definition"
+      "trait_definition"
+      "try_catch_clause"
+      "try_catch_expression"
+      "try_else_clause"
+      "try_expression"
+      "tuple_struct_definition"
+      "type_definition"
+      "while_expression"))
+   "\\'")
+  "Regexp matching MoonBit nodes treated as lists and foldable blocks.")
+
+(defconst moonbit-ts-mode--comment-node-regexp
+  (concat "\\`" (regexp-opt '("block_comment" "comment")) "\\'")
+  "Regexp matching MoonBit comment nodes.")
 
 (defconst moonbit-ts-mode--treesit-thing-settings
   `((moonbit
+     (list ,moonbit-ts-mode--list-node-regexp)
      (sexp ,moonbit-ts-mode--sexp-node-regexp)
-     (text ,moonbit-ts-mode--text-node-regexp))
+     (text ,moonbit-ts-mode--text-node-regexp)
+     (comment ,moonbit-ts-mode--comment-node-regexp))
     (moonbit_mbtp
+     (list ,moonbit-ts-mode--list-node-regexp)
      (sexp ,moonbit-ts-mbtp--sexp-node-regexp)
-     (text ,moonbit-ts-mbtp--text-node-regexp)))
-  "Tree-sitter thing definitions for MoonBit navigation.")
-
-(defun moonbit-ts-mode--thing-settings (&optional language)
-  "Return tree-sitter thing settings for LANGUAGE."
-  (let ((language (or language (moonbit-ts-mode--language))))
-    (list (assq language moonbit-ts-mode--treesit-thing-settings))))
-
-(defconst moonbit-ts-mode--treesit-fold-rules
-  '((block_comment . treesit-fold-range-c-like-comment)
-    (comment . treesit-fold-range-c-like-comment)
-    (block_expression . treesit-fold-range-seq)
-    (enum_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (error_type_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (for_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (for_in_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (function_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (if_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (impl_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (lexmatch_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (loop_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (match_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (struct_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (test_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (trait_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (try_catch_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (try_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (tuple_struct_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (type_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (while_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (lemma_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (lemma_block_expression . treesit-fold-range-seq)
-    (lemma_if_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (lemma_match_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (logic_function_definition . moonbit-ts-mode--treesit-fold-range-body)
-    (mbtp_logic_block_expression . treesit-fold-range-seq)
-    (mbtp_match_expression . moonbit-ts-mode--treesit-fold-range-body)
-    (mbtp_predicate_body . treesit-fold-range-seq)
-    (predicate_definition . moonbit-ts-mode--treesit-fold-range-body))
-  "Optional `treesit-fold' fold rules for MoonBit buffers.")
-
-(declare-function treesit-fold-range-c-like-comment "ext:treesit-fold")
-(declare-function treesit-fold-range-markers "ext:treesit-fold")
-(declare-function treesit-fold-range-seq "ext:treesit-fold")
-(defvar treesit-fold-range-alist)
-
-(defun moonbit-ts-mode--treesit-fold--add-offset (range offset)
-  "Add `treesit-fold' OFFSET to RANGE."
-  (pcase-let ((`(,beg . ,end) range)
-              (`(,beg-offset . ,end-offset) (or offset '(0 . 0))))
-    (cons (+ beg beg-offset) (+ end end-offset))))
-
-(defconst moonbit-ts-mode--treesit-fold-body-node-types
-  '("block_expression"
-    "else_clause"
-    "guard_else_expression"
-    "lemma_block_expression"
-    "mbtp_logic_block_expression"
-    "mbtp_predicate_body"
-    "nobreak_clause"
-    "noraise_clause"
-    "try_catch_clause"
-    "try_else_clause")
-  "MoonBit direct child node types that delimit foldable bodies.")
-
-(defun moonbit-ts-mode--treesit-fold--own-delimited-range (node)
-  "Return NODE's directly delimited range without an offset."
-  (or (treesit-fold-range-markers node '(0 . 0) "{" "}")
-      (treesit-fold-range-markers node '(0 . 0) "(" ")")))
-
-(defun moonbit-ts-mode--treesit-fold--body-child-range (node)
-  "Return NODE's delimited range, including nested body clauses."
-  (let ((range (moonbit-ts-mode--treesit-fold--own-delimited-range node)))
-    (dolist (child (treesit-node-children node t) range)
-      (when (member (treesit-node-type child)
-                    moonbit-ts-mode--treesit-fold-body-node-types)
-        (let ((child-range
-               (moonbit-ts-mode--treesit-fold--body-child-range child)))
-          (when child-range
-            (setq range
-                  (if range
-                      (cons (min (car range) (car child-range))
-                            (max (cdr range) (cdr child-range)))
-                    child-range))))))))
-
-(defun moonbit-ts-mode--treesit-fold-range-body (node offset)
-  "Return a `treesit-fold' body range for MoonBit NODE.
-
-OFFSET is added to the final range."
-  (when node
-    (let* ((own-range
-            (moonbit-ts-mode--treesit-fold--own-delimited-range node))
-           (body-ranges
-            (delq nil
-                  (mapcar
-                   (lambda (child)
-                     (when (member
-                            (treesit-node-type child)
-                            moonbit-ts-mode--treesit-fold-body-node-types)
-                       (moonbit-ts-mode--treesit-fold--body-child-range child)))
-                   (treesit-node-children node t))))
-           (range (or own-range
-                      (when body-ranges
-                        (cons (caar body-ranges)
-                              (cdr (car (last body-ranges))))))))
-      (when (and range (< (car range) (cdr range)))
-        (moonbit-ts-mode--treesit-fold--add-offset range offset)))))
-
-(defun moonbit-ts-mode--setup-treesit-fold ()
-  "Register MoonBit rules in `treesit-fold-range-alist'."
-  (setf (alist-get 'moonbit-ts-mode treesit-fold-range-alist)
-        moonbit-ts-mode--treesit-fold-rules))
+     (text ,moonbit-ts-mbtp--text-node-regexp)
+     (comment ,moonbit-ts-mode--comment-node-regexp)))
+  "Tree-sitter thing definitions for MoonBit navigation and folding.")
 
 (defconst moonbit-ts-mode--definition-type-regexp
   (regexp-opt
@@ -1125,14 +986,6 @@ OFFSET is added to the final range."
      "type_definition"
      "value_definition"))
   "Regexp matching MoonBit tree-sitter definition node types.")
-
-(defconst moonbit-ts-mode--defun-type-regexp
-  moonbit-ts-mode--definition-type-regexp
-  "Regexp matching MoonBit tree-sitter defun node types.")
-
-(defconst moonbit-ts-mode--outline-type-regexp
-  moonbit-ts-mode--definition-type-regexp
-  "Regexp matching MoonBit tree-sitter outline heading node types.")
 
 (defconst moonbit-ts-mode--defun-name-node-regexp
   (regexp-opt
@@ -1185,381 +1038,64 @@ OFFSET is added to the final range."
           (treesit-search-subtree
            node moonbit-ts-mode--defun-name-node-regexp nil nil 3))))))
 
-(defun moonbit-ts--treesit-ready-p (&optional language)
-  "Return non-nil if tree-sitter is ready for LANGUAGE."
-  (and (fboundp 'treesit-available-p)
-       (treesit-available-p)
-       (treesit-language-available-p (or language (moonbit-ts-mode--language)))))
-
-(defun moonbit-ts--project-root ()
-  "Return the current project root, if any."
-  (let ((proj (project-current nil)))
-    (when proj
-      (project-root proj))))
-
-(define-compilation-mode moonbit-ts-compilation-mode "MoonBit Compilation"
-  "Compilation mode for MoonBit commands."
-  (when moonbit-ts-enable-compile-errors
-    (setq-local compilation-error-regexp-alist-alist
-                (cons `(moonbit-ts ,moonbit-ts--compile-error-regexp 1 2 3)
-                      compilation-error-regexp-alist-alist))
-    (setq-local compilation-error-regexp-alist
-                (cons 'moonbit-ts compilation-error-regexp-alist))))
-
-(defun moonbit-ts--compile (command)
-  "Run COMMAND with compilation in the project root when available."
-  (let ((default-directory (or (moonbit-ts--project-root) default-directory)))
-    (compilation-start command #'moonbit-ts-compilation-mode)))
-
-(defun moonbit-ts-build ()
-  "Build the current MoonBit project."
-  (interactive)
-  (moonbit-ts--compile moonbit-ts-project-build-command))
-
-(defun moonbit-ts-check ()
-  "Type-check the current MoonBit project."
-  (interactive)
-  (moonbit-ts--compile moonbit-ts-project-check-command))
-
-(defun moonbit-ts-test ()
-  "Test the current MoonBit project."
-  (interactive)
-  (moonbit-ts--compile moonbit-ts-project-test-command))
-
-(defun moonbit-ts--setup-project-commands ()
-  "Set project commands for MoonBit buffers."
-  (setq-local compile-command moonbit-ts-project-build-command))
-
-(defun moonbit-ts--maybe-enable-eglot ()
-  "Enable Eglot for MoonBit buffers when available."
-  (when (fboundp 'eglot-ensure)
-    (eglot-ensure)))
-
-(defvar-local moonbit-ts--semantic-token-overlays nil
-  "Semantic token overlays owned by the current MoonBit buffer.")
-(defvar-local moonbit-ts--semantic-tokens-refresh-timer nil
-  "Pending semantic token refresh timer for the current buffer.")
-(defvar-local moonbit-ts--semantic-tokens-request-token nil
-  "Opaque identity of the latest semantic token request.")
-
-(define-minor-mode moonbit-ts-semantic-tokens-mode
-  "Highlight semantic tokens reported by the MoonBit language server."
-  :init-value nil
-  :lighter nil
-  (if moonbit-ts-semantic-tokens-mode
-      (progn
-        (add-hook 'after-change-functions
-                  #'moonbit-ts--semantic-tokens-after-change nil t)
-        (add-hook 'after-save-hook
-                  #'moonbit-ts--semantic-tokens-after-save 90 t)
-        (moonbit-ts--semantic-tokens-schedule-refresh 0))
-    (remove-hook 'after-change-functions
-                 #'moonbit-ts--semantic-tokens-after-change t)
-    (remove-hook 'after-save-hook #'moonbit-ts--semantic-tokens-after-save t)
-    (setq moonbit-ts--semantic-tokens-request-token (cons nil nil))
-    (moonbit-ts--semantic-tokens-cancel-refresh)
-    (moonbit-ts--semantic-tokens-clear)))
-
-(defun moonbit-ts--semantic-tokens-set-overlays (overlays)
-  "Replace current MoonBit semantic token overlays with OVERLAYS."
-  (mapc #'delete-overlay moonbit-ts--semantic-token-overlays)
-  (save-restriction
-    (widen)
-    (dolist (overlay (overlays-in (point-min) (point-max)))
-      (when (and (overlay-get overlay 'moonbit-ts-semantic-token)
-                 (not (memq overlay overlays)))
-        (delete-overlay overlay))))
-  (setq moonbit-ts--semantic-token-overlays overlays))
-
-(defun moonbit-ts--semantic-tokens-clear ()
-  "Clear MoonBit semantic token overlays in the current buffer."
-  (moonbit-ts--semantic-tokens-set-overlays nil))
-
-(defun moonbit-ts--semantic-tokens-cancel-refresh ()
-  "Cancel any pending MoonBit semantic token refresh."
-  (when (timerp moonbit-ts--semantic-tokens-refresh-timer)
-    (cancel-timer moonbit-ts--semantic-tokens-refresh-timer))
-  (setq moonbit-ts--semantic-tokens-refresh-timer nil))
-
-(defun moonbit-ts--semantic-tokens-schedule-refresh (&optional delay)
-  "Refresh MoonBit semantic tokens after DELAY seconds of idleness."
-  (moonbit-ts--semantic-tokens-cancel-refresh)
-  (setq moonbit-ts--semantic-tokens-refresh-timer
-        (run-with-idle-timer
-         (or delay moonbit-ts-semantic-tokens-refresh-delay) nil
-         (lambda (buffer)
-           (when (buffer-live-p buffer)
-             (with-current-buffer buffer
-               (setq moonbit-ts--semantic-tokens-refresh-timer nil)
-               (moonbit-ts-semantic-tokens-refresh))))
-         (current-buffer))))
-
-(defun moonbit-ts--semantic-tokens-after-change (&rest _)
-  "Schedule a MoonBit semantic token refresh after a buffer change."
-  (moonbit-ts--semantic-tokens-schedule-refresh))
-
-(defun moonbit-ts--semantic-tokens-after-save ()
-  "Schedule a MoonBit semantic token refresh after saving."
-  (moonbit-ts--semantic-tokens-schedule-refresh 0))
-
-(defun moonbit-ts--semantic-tokens-seq-elt (seq index)
-  "Return element INDEX from JSON array SEQ."
-  (if (vectorp seq)
-      (aref seq index)
-    (nth index seq)))
-
-(defun moonbit-ts--semantic-tokens-seq-length (seq)
-  "Return the length of JSON array SEQ."
-  (length seq))
-
-(defun moonbit-ts--semantic-tokens-token-face (token-type token-modifiers)
-  "Return the face list for TOKEN-TYPE and TOKEN-MODIFIERS."
-  (let (faces)
-    (when (member "async" token-modifiers)
-      (push 'moonbit-ts-semantic-token-async-face faces))
-    (when (member "error" token-modifiers)
-      (push 'moonbit-ts-semantic-token-error-face faces))
-    (and (member token-type '("function_call" "function_decl"))
-         (nreverse faces))))
-
-(defun moonbit-ts--semantic-tokens-position-to-point (line character)
-  "Return point for zero-based LINE and LSP CHARACTER."
-  (eglot--lsp-position-to-point (list :line line :character character)))
-
-(defun moonbit-ts--semantic-tokens-end-point (line character length)
-  "Return point at LINE, CHARACTER plus semantic token LENGTH."
-  (eglot--lsp-position-to-point
-   (list :line line :character (+ character length))))
-
-(defun moonbit-ts--semantic-tokens-decode-modifiers (legend mask)
-  "Decode semantic token modifier MASK using LEGEND."
-  (let ((modifiers (plist-get legend :tokenModifiers))
-        result)
-    (dotimes (index (moonbit-ts--semantic-tokens-seq-length modifiers))
-      (when (not (zerop (logand mask (ash 1 index))))
-        (push (moonbit-ts--semantic-tokens-seq-elt modifiers index) result)))
-    (nreverse result)))
-
-(defun moonbit-ts--semantic-tokens-provider ()
-  "Return the current server's full semantic token provider, if any."
-  (let* ((provider (eglot-server-capable :semanticTokensProvider))
-         (full (and (listp provider) (plist-member provider :full))))
-    (when (and full
-               (not (eq (cadr full) :json-false))
-               (plist-get provider :legend))
-      provider)))
-
-(defun moonbit-ts--semantic-tokens-apply (result legend)
-  "Apply semantic token RESULT decoded with LEGEND to the current buffer."
-  (if (null result)
-      (moonbit-ts--semantic-tokens-clear)
-    (let* ((types (plist-get legend :tokenTypes))
-           (data (plist-get result :data))
-           (data-length (moonbit-ts--semantic-tokens-seq-length data))
-           (type-count (moonbit-ts--semantic-tokens-seq-length types))
-           (line 0)
-           (character 0)
-           specs)
-      (unless (and (or (listp data) (vectorp data))
-                   (or (listp types) (vectorp types)))
-        (error "Invalid MoonBit semantic token response"))
-      (unless (zerop (% data-length 5))
-        (error "Invalid MoonBit semantic token data length: %d" data-length))
-      (save-excursion
-        (save-restriction
-          (widen)
-          (cl-loop
-           for index from 0 below data-length by 5
-           for delta-line = (moonbit-ts--semantic-tokens-seq-elt data index)
-           for delta-start = (moonbit-ts--semantic-tokens-seq-elt data (+ index 1))
-           for length = (moonbit-ts--semantic-tokens-seq-elt data (+ index 2))
-           for token-type-index = (moonbit-ts--semantic-tokens-seq-elt data (+ index 3))
-           for token-modifier-mask = (moonbit-ts--semantic-tokens-seq-elt data (+ index 4))
-           do
-           (unless (and (natnump delta-line)
-                        (natnump delta-start)
-                        (natnump length)
-                        (natnump token-type-index)
-                        (< token-type-index type-count)
-                        (natnump token-modifier-mask))
-             (error "Invalid MoonBit semantic token at data index %d" index))
-           (setq line (+ line delta-line))
-           (setq character (if (zerop delta-line)
-                               (+ character delta-start)
-                             delta-start))
-           (when (> length 0)
-             (let* ((token-type (moonbit-ts--semantic-tokens-seq-elt
-                                 types token-type-index))
-                    (token-modifiers
-                     (moonbit-ts--semantic-tokens-decode-modifiers
-                      legend token-modifier-mask))
-                    (face (moonbit-ts--semantic-tokens-token-face
-                           token-type token-modifiers)))
-               (when face
-                 (let ((start (moonbit-ts--semantic-tokens-position-to-point
-                               line character))
-                       (end (moonbit-ts--semantic-tokens-end-point
-                             line character length)))
-                   (when (< start end)
-                     (push (list start end face) specs)))))))))
-      (let (overlays complete)
-        (unwind-protect
-            (progn
-              (dolist (spec (nreverse specs))
-                (pcase-let ((`(,start ,end ,face) spec))
-                  (let ((overlay (make-overlay start end nil t nil)))
-                    (push overlay overlays)
-                    (overlay-put overlay 'face face)
-                    (overlay-put overlay 'priority 20)
-                    (overlay-put overlay 'moonbit-ts-semantic-token t))))
-              (setq complete t))
-          (unless complete
-            (mapc #'delete-overlay overlays)))
-        (moonbit-ts--semantic-tokens-set-overlays (nreverse overlays))))))
-
-(defun moonbit-ts--semantic-tokens-apply-safely (result legend)
-  "Apply semantic token RESULT with LEGEND, warning on invalid data."
-  (condition-case error-data
-      (moonbit-ts--semantic-tokens-apply result legend)
-    (error
-     (display-warning
-      'moonbit-ts
-      (format "Ignoring invalid semantic tokens: %s"
-              (error-message-string error-data))
-      :warning))))
-
-(defun moonbit-ts-semantic-tokens-refresh ()
-  "Refresh MoonBit semantic token highlighting."
-  (interactive)
-  (when (and moonbit-ts-semantic-tokens-mode
-             (featurep 'eglot)
-             (fboundp 'eglot-current-server)
-             (eglot-current-server))
-    (when-let* ((server (eglot-current-server))
-                (provider (moonbit-ts--semantic-tokens-provider))
-                (legend (copy-tree (plist-get provider :legend)))
-                (buffer (current-buffer))
-                (tick (buffer-chars-modified-tick))
-                (request-token (cons nil nil)))
-      (setq moonbit-ts--semantic-tokens-request-token request-token)
-      (eglot--signal-textDocument/didChange)
-      (jsonrpc-async-request
-       server :textDocument/semanticTokens/full
-       `(:textDocument ,(eglot--TextDocumentIdentifier))
-       :deferred :moonbit-ts-semantic-tokens
-       :success-fn
-       (lambda (result)
-         (when (buffer-live-p buffer)
-           (with-current-buffer buffer
-             (when (and moonbit-ts-semantic-tokens-mode
-                        (eq request-token
-                            moonbit-ts--semantic-tokens-request-token)
-                        (eglot-managed-p)
-                        (eq server (eglot-current-server)))
-               (if (= tick (buffer-chars-modified-tick))
-                   (moonbit-ts--semantic-tokens-apply-safely result legend)
-                 (moonbit-ts--semantic-tokens-schedule-refresh 0))))))))))
-
-(defun moonbit-ts--maybe-enable-semantic-tokens ()
-  "Enable semantic tokens in MoonBit buffers managed by Eglot."
-  (if (and moonbit-ts-enable-semantic-tokens
-           (derived-mode-p 'moonbit-ts-mode)
-           (fboundp 'eglot-managed-p)
-           (eglot-managed-p)
-           (moonbit-ts--semantic-tokens-provider))
-      (moonbit-ts-semantic-tokens-mode 1)
-    (when moonbit-ts-semantic-tokens-mode
-      (moonbit-ts-semantic-tokens-mode -1))))
-
-(defun moonbit-ts--setup-common ()
-  "Shared setup for MoonBit modes."
-  (setq-local moonbit-ts-mode--compiled-syntax-propertize-query
-              (treesit-query-compile
-               (moonbit-ts-mode--language)
-               moonbit-ts-mode--syntax-propertize-query))
-  (setq-local syntax-propertize-function
-              #'moonbit-ts-mode--syntax-propertize)
-  (add-hook 'syntax-propertize-extend-region-functions
-            #'syntax-propertize-wholelines nil t)
-  (setq-local comment-start "// ")
-  (setq-local comment-end "")
-  (setq-local comment-start-skip "\\(?:///|\\|//+\\)\\s-*")
-  (setq-local comment-use-syntax t)
-  (setq-local comment-insert-comment-function
-              #'moonbit-ts-mode--comment-insert)
-  (setq-local indent-tabs-mode nil)
-  (setq-local indent-line-function #'treesit-simple-indent)
-  (setq-local treesit-outline-predicate moonbit-ts-mode--outline-type-regexp)
-  (setq-local treesit-defun-type-regexp moonbit-ts-mode--defun-type-regexp)
-  (setq-local treesit-defun-name-function #'moonbit-ts-mode--defun-name)
-  (setq-local treesit-simple-imenu-settings
-              `((nil ,moonbit-ts-mode--definition-type-regexp
-                     nil moonbit-ts-mode--defun-name)))
-  (setq-local treesit-thing-settings (moonbit-ts-mode--thing-settings))
-  (moonbit-ts--setup-project-commands)
-  (add-hook 'eglot-managed-mode-hook
-            #'moonbit-ts--maybe-enable-semantic-tokens nil t)
-  (moonbit-ts--maybe-enable-eglot))
-
 ;;;###autoload
 (define-derived-mode moonbit-ts-mode prog-mode "MoonBit[TS]"
   "Tree-sitter major mode for MoonBit."
   :syntax-table moonbit-ts-mode--syntax-table
   (let ((language (moonbit-ts-mode--language)))
-    (unless (moonbit-ts--treesit-ready-p language)
+    (unless (and (treesit-available-p)
+                 (treesit-language-available-p language))
       (user-error "MoonBit tree-sitter grammar `%s` is unavailable" language))
     (treesit-parser-create language)
-    (setq-local treesit-font-lock-settings (moonbit-ts-mode--font-lock-settings language))
+    (setq-local treesit-font-lock-settings
+                (treesit-font-lock-rules
+                 :language language
+                 :feature 'default
+                 (if (eq language 'moonbit_mbtp)
+                     moonbit-ts-mbtp--ts-font-lock-rules
+                   moonbit-ts--ts-font-lock-rules)
+                 :language language
+                 :feature 'default
+                 :override t
+                 moonbit-ts-mode--contextual-keyword-font-lock-rules))
     (setq-local treesit-font-lock-feature-list '((default)))
-    (setq-local treesit-simple-indent-rules (moonbit-ts-mode--indent-rules language))
-    (moonbit-ts--setup-common)
-    (treesit-major-mode-setup)))
+    (setq-local treesit-simple-indent-rules
+                moonbit-ts-mode--treesit-indent-rules)
+    (setq-local moonbit-ts-mode--compiled-syntax-propertize-query
+                (treesit-query-compile
+                 language moonbit-ts-mode--syntax-propertize-query))
+    (setq-local syntax-propertize-function
+                #'moonbit-ts-mode--syntax-propertize)
+    (add-hook 'syntax-propertize-extend-region-functions
+              #'syntax-propertize-wholelines nil t)
+    (setq-local comment-start "// ")
+    (setq-local comment-end "")
+    (setq-local comment-start-skip "\\(?:///|\\|//+\\)\\s-*")
+    (setq-local comment-use-syntax t)
+    (setq-local comment-insert-comment-function
+                #'moonbit-ts-mode--comment-insert)
+    (setq-local indent-tabs-mode nil)
+    (setq-local indent-line-function #'treesit-simple-indent)
+    (setq-local treesit-outline-predicate
+                moonbit-ts-mode--definition-type-regexp)
+    (setq-local treesit-defun-type-regexp
+                moonbit-ts-mode--definition-type-regexp)
+    (setq-local treesit-defun-name-function #'moonbit-ts-mode--defun-name)
+    (setq-local treesit-simple-imenu-settings
+                `((nil ,moonbit-ts-mode--definition-type-regexp
+                       nil moonbit-ts-mode--defun-name)))
+    (setq-local treesit-thing-settings
+                moonbit-ts-mode--treesit-thing-settings)
+    (setq-local compile-command "moon build")
+    (treesit-major-mode-setup)
+    (eglot-ensure)))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.mbt\\'" . moonbit-ts-mode))
-;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.mbti\\'" . moonbit-ts-mode))
-;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.mbtp\\'" . moonbit-ts-mode))
-
-(defclass moonbit-ts-eglot-server (eglot-lsp-server) ()
-  "Eglot server class for MoonBit.")
-
-(defun moonbit-ts--add-semantic-token-capabilities (capabilities)
-  "Add MoonBit semantic token support to CAPABILITIES."
-  (let* ((workspace (plist-get capabilities :workspace))
-         (text-document (plist-get capabilities :textDocument)))
-    (setf (plist-get capabilities :workspace)
-          (plist-put workspace :semanticTokens
-                     '(:refreshSupport :json-false)))
-    (setf (plist-get capabilities :textDocument)
-          (plist-put
-           text-document :semanticTokens
-           '(:dynamicRegistration :json-false
-             :requests (:range :json-false :full (:delta :json-false))
-             :tokenTypes ["function_call" "function_decl"]
-             :tokenModifiers ["async" "error"]
-             :formats ["relative"]
-             :overlappingTokenSupport :json-false
-             :multilineTokenSupport :json-false
-             :serverCancelSupport :json-false
-             :augmentsSyntaxTokens t)))
-    capabilities))
-
-(cl-defmethod eglot-client-capabilities ((_server moonbit-ts-eglot-server))
-  "Add MoonBit semantic token support to Eglot client capabilities."
-  (moonbit-ts--add-semantic-token-capabilities (cl-call-next-method)))
-
-(defun moonbit-ts-mode--eglot-contact (_interactive _project)
-  "Return the Eglot contact for MoonBit."
-  `(moonbit-ts-eglot-server . ,moonbit-ts-lsp-server-command))
+(add-to-list 'auto-mode-alist '("\\.mbt\\(?:i\\|p\\)?\\'" . moonbit-ts-mode))
 
 (add-to-list 'eglot-server-programs
              '((moonbit-ts-mode :language-id "moonbit")
-               . moonbit-ts-mode--eglot-contact))
-
-(when (require 'treesit-fold nil t)
-  (moonbit-ts-mode--setup-treesit-fold))
+               . ("moon" "lsp")))
 
 (provide 'moonbit-ts-mode)
 

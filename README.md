@@ -4,7 +4,7 @@ MoonBit tree-sitter major mode for Emacs with Eglot support.
 
 ## Requirements
 
-- Emacs 30+ for `treesit` support and structural navigation
+- Emacs 31.1+ for `treesit` support, structural navigation, and native folding
 - MoonBit tree-sitter grammar
 - MoonBit toolchain
 - `moon` in `PATH` (for LSP via `moon lsp`)
@@ -73,51 +73,23 @@ implementations, tests, and predicate definitions.
 
 ## Folding
 
-If the optional `treesit-fold` package is installed, MoonBit fold rules are
-registered when `treesit-fold` loads, covering definitions and common block
-expressions such as `if`, `match`, `loop`, `for`, and `try`.
+MoonBit definitions and block expressions support Emacs 31's native
+tree-sitter-aware Hideshow integration. Enable it with `M-x hs-minor-mode` and
+use commands such as `hs-toggle-hiding`, `hs-hide-all`, and `hs-show-all`.
 
 ## LSP (Eglot)
 
-If `eglot` is available, it is started automatically in MoonBit buffers using
-`moon lsp`. You can customize the command via:
+Eglot is started automatically in MoonBit buffers using `moon lsp`. Semantic
+token highlighting is handled by Emacs 31's built-in
+`eglot-semantic-tokens-mode`.
 
-```elisp
-(setq moonbit-ts-lsp-server-command '("moon" "lsp"))
-```
+## Compilation
 
-When the MoonBit language server reports semantic tokens, the mode also
-highlights async and error-raising function calls/declarations. You can disable
-this with:
-
-```elisp
-(setq moonbit-ts-enable-semantic-tokens nil)
-```
-
-## Project commands
-
-The mode sets project defaults:
-
-- Build: `moon build`
-- Check: `moon check`
-- Test: `moon test`
-
-`compile-command` defaults to the build command in MoonBit buffers.
-
-It also provides interactive commands:
-
-- `M-x moonbit-ts-build`
-- `M-x moonbit-ts-check`
-- `M-x moonbit-ts-test`
+`compile-command` defaults to `moon build` in MoonBit buffers. Use
+`M-x project-compile` to run it from the project root; edit the command to
+`moon check` or `moon test` when needed.
 
 ## Compile error parsing
 
-MoonBit error parsing is enabled by default for the project commands above. To
-disable it:
-
-```elisp
-(setq moonbit-ts-enable-compile-errors nil)
-```
-
-This makes errors in `moon build`, `moon check`, and `moon test` clickable in
-`compilation-mode`.
+MoonBit errors from `moon build`, `moon check`, and `moon test` are clickable in
+standard compilation buffers.

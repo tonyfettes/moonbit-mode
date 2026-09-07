@@ -19,7 +19,9 @@
 
 ;;; Code:
 
+(require 'cl-lib)
 (require 'ert)
+(require 'hideshow)
 (require 'moonbit-ts-mode)
 
 (defmacro moonbit-ts-test--with-buffer (file-name contents &rest body)
@@ -43,164 +45,18 @@
   (search-forward text)
   (get-text-property (match-beginning 0) 'face))
 
-(ert-deftest moonbit-ts-test-eglot-hook-is-buffer-local ()
-  (should-not
-   (memq #'moonbit-ts--maybe-enable-semantic-tokens
-         (default-value 'eglot-managed-mode-hook)))
-  (with-temp-buffer
-    (let (hook-installed-before-eglot)
-      (cl-letf (((symbol-function 'treesit-query-compile) #'ignore)
-                ((symbol-function 'eglot-ensure)
-                 (lambda ()
-                   (setq hook-installed-before-eglot
-                         (and
-                          (local-variable-p 'eglot-managed-mode-hook)
-                          (memq #'moonbit-ts--maybe-enable-semantic-tokens
-                                eglot-managed-mode-hook))))))
-        (moonbit-ts--setup-common))
-      (should hook-installed-before-eglot))))
+(ert-deftest moonbit-ts-test-eglot-registration ()
+  (should
+   (equal
+    (cdr (assoc '(moonbit-ts-mode :language-id "moonbit")
+                eglot-server-programs))
+    '("moon" "lsp"))))
 
-(ert-deftest moonbit-ts-test-semantic-token-faces-are-independent ()
-  (let* ((async-face
-          (moonbit-ts--semantic-tokens-token-face
-           "function_call" '("async")))
-         (async-snapshot (copy-tree async-face))
-         (plain-face
-          (moonbit-ts--semantic-tokens-token-face "function_call" nil))
-         (error-face
-          (moonbit-ts--semantic-tokens-token-face
-           "function_decl" '("error"))))
-    (should (equal async-snapshot
-                   '(moonbit-ts-semantic-token-async-face)))
-    (should-not plain-face)
-    (should (equal error-face
-                   '(moonbit-ts-semantic-token-error-face)))
-    (should (equal async-face async-snapshot))))
-
-(ert-deftest moonbit-ts-test-semantic-token-capabilities-are-attached ()
-  (let* ((base '(:workspace (:applyEdit t)
-                :textDocument (:hover t)))
-         (capabilities
-          (moonbit-ts--add-semantic-token-capabilities (copy-tree base)))
-         (workspace (plist-get capabilities :workspace))
-         (text-document (plist-get capabilities :textDocument))
-         (semantic-tokens (plist-get text-document :semanticTokens)))
-    (should (eq (plist-get (plist-get workspace :semanticTokens)
-                           :refreshSupport)
-                :json-false))
-    (should (equal (plist-get semantic-tokens :tokenTypes)
-                   ["function_call" "function_decl"]))
-    (should (equal (plist-get semantic-tokens :tokenModifiers)
-                   ["async" "error"]))
-    (should (eq (plist-get semantic-tokens :serverCancelSupport)
-                :json-false))))
-
-(ert-deftest moonbit-ts-test-semantic-token-provider-requires-full ()
-  (let ((full-provider
-         '(:full t
-           :legend (:tokenTypes ["function_call"]
-                    :tokenModifiers ["async"]))))
-    (cl-letf (((symbol-function 'eglot-server-capable)
-               (lambda (&rest _) full-provider)))
-      (should (eq (moonbit-ts--semantic-tokens-provider) full-provider)))
-    (let ((empty-full-provider
-           '(:full nil
-             :legend (:tokenTypes ["function_call"]
-                      :tokenModifiers ["async"]))))
-      (cl-letf (((symbol-function 'eglot-server-capable)
-                 (lambda (&rest _) empty-full-provider)))
-        (should (eq (moonbit-ts--semantic-tokens-provider)
-                    empty-full-provider))))
-    (cl-letf (((symbol-function 'eglot-server-capable)
-               (lambda (&rest _)
-                 '(:full :json-false
-                   :legend (:tokenTypes [] :tokenModifiers [])))))
-      (should-not (moonbit-ts--semantic-tokens-provider)))
-    (cl-letf (((symbol-function 'eglot-server-capable)
-               (lambda (&rest _)
-                 '(:range t
-                   :legend (:tokenTypes [] :tokenModifiers [])))))
-      (should-not (moonbit-ts--semantic-tokens-provider)))))
-
-(ert-deftest moonbit-ts-test-null-semantic-tokens-clear-overlays ()
-  (with-temp-buffer
-    (insert "call")
-    (let ((overlay (make-overlay (point-min) (point-max))))
-      (overlay-put overlay 'moonbit-ts-semantic-token t)
-      (setq moonbit-ts--semantic-token-overlays (list overlay))
-      (moonbit-ts--semantic-tokens-apply nil nil)
-      (should-not moonbit-ts--semantic-token-overlays)
-      (should-not (overlay-buffer overlay))
-      (should-not (overlays-in (point-min) (point-max))))))
-
-(ert-deftest moonbit-ts-test-semantic-token-apply-is-atomic ()
-  (with-temp-buffer
-    (insert "call more")
-    (let* ((legend '(:tokenTypes ["function_call"]
-                     :tokenModifiers ["async" "error"]))
-           (old-overlay (make-overlay 1 5)))
-      (overlay-put old-overlay 'moonbit-ts-semantic-token t)
-      (setq moonbit-ts--semantic-token-overlays (list old-overlay))
-      (should-error
-       (moonbit-ts--semantic-tokens-apply '(:data [0 0 4 0 0 0]) legend))
-      (should (overlay-buffer old-overlay))
-      (should (equal moonbit-ts--semantic-token-overlays
-                     (list old-overlay)))
-      (should (= (length (overlays-in (point-min) (point-max))) 1)))))
-
-(ert-deftest moonbit-ts-test-semantic-token-creation-failure-is-atomic ()
-  (dolist (fail-at '(1 2 3))
-    (with-temp-buffer
-      (insert "call more")
-      (let* ((legend '(:tokenTypes ["function_call"]
-                       :tokenModifiers ["async" "error"]))
-             (old-overlay (make-overlay 6 10))
-             (original-overlay-put (symbol-function 'overlay-put))
-             (put-count 0))
-        (overlay-put old-overlay 'moonbit-ts-semantic-token t)
-        (setq moonbit-ts--semantic-token-overlays (list old-overlay))
-        (cl-letf (((symbol-function
-                    'moonbit-ts--semantic-tokens-position-to-point)
-                   (lambda (_line character) (1+ character)))
-                  ((symbol-function 'moonbit-ts--semantic-tokens-end-point)
-                   (lambda (_line character length)
-                     (+ 1 character length)))
-                  ((symbol-function 'overlay-put)
-                   (lambda (overlay property value)
-                     (cl-incf put-count)
-                     (when (= put-count fail-at)
-                       (error "Injected overlay failure"))
-                     (funcall original-overlay-put overlay property value))))
-          (should-error
-           (moonbit-ts--semantic-tokens-apply
-            '(:data [0 0 4 0 1]) legend)))
-        (should (overlay-buffer old-overlay))
-        (should (equal moonbit-ts--semantic-token-overlays
-                       (list old-overlay)))
-        (should (= (length (overlays-in (point-min) (point-max))) 1))))))
-
-(ert-deftest moonbit-ts-test-semantic-token-apply-replaces-overlays ()
-  (with-temp-buffer
-    (insert "call more")
-    (let* ((legend '(:tokenTypes ["function_call"]
-                     :tokenModifiers ["async" "error"]))
-           (old-overlay (make-overlay 6 10)))
-      (overlay-put old-overlay 'moonbit-ts-semantic-token t)
-      (setq moonbit-ts--semantic-token-overlays (list old-overlay))
-      (cl-letf (((symbol-function
-                  'moonbit-ts--semantic-tokens-position-to-point)
-                 (lambda (_line character) (1+ character)))
-                ((symbol-function 'moonbit-ts--semantic-tokens-end-point)
-                 (lambda (_line character length)
-                   (+ 1 character length))))
-        (moonbit-ts--semantic-tokens-apply '(:data [0 0 4 0 1]) legend))
-      (should-not (overlay-buffer old-overlay))
-      (should (= (length moonbit-ts--semantic-token-overlays) 1))
-      (let ((overlay (car moonbit-ts--semantic-token-overlays)))
-        (should (overlay-buffer overlay))
-        (should (overlay-get overlay 'moonbit-ts-semantic-token))
-        (should (equal (overlay-get overlay 'face)
-                       '(moonbit-ts-semantic-token-async-face)))))))
+(ert-deftest moonbit-ts-test-compilation-error-registration ()
+  (should (memq 'moonbit-ts compilation-error-regexp-alist))
+  (should
+   (equal (cdr (assq 'moonbit-ts compilation-error-regexp-alist-alist))
+          (list moonbit-ts--compile-error-regexp 1 2 3))))
 
 (ert-deftest moonbit-ts-test-font-lock-faces ()
   (moonbit-ts-test--with-buffer "faces.mbt"
@@ -359,9 +215,7 @@
       (dolist (truncated-name '("@json" "@math" "@bytes"))
         (should-not (assoc truncated-name index))))))
 
-(ert-deftest moonbit-ts-test-fold-ranges-use-direct-bodies ()
-  (unless (require 'treesit-fold nil t)
-    (ert-skip "treesit-fold is unavailable"))
+(ert-deftest moonbit-ts-test-native-hideshow-ranges-use-direct-bodies ()
   (dolist
       (case
        '(("match_expression"
@@ -380,10 +234,11 @@
       (moonbit-ts-test--with-buffer "fold.mbt" contents
         (let* ((node (treesit-search-subtree
                       (treesit-buffer-root-node) node-type))
-               (range (moonbit-ts-mode--treesit-fold-range-body node nil))
+               (_ (goto-char (treesit-node-start node)))
+               (range (hs-block-positions t t))
                (folded (and range
                             (buffer-substring-no-properties
-                             (car range) (cdr range)))))
+                             (car range) (cadr range)))))
           (should range)
           (dolist (text included)
             (should (string-match-p (regexp-quote text) folded)))
